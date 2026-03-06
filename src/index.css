@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-dark: #1e3a8a;
+  --color-brand-medium: #3b82f6;
+  --color-brand-light: #eff6ff;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+}
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 font-sans antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.glass {
+  @apply bg-white/80 backdrop-blur-md border border-white/20;
+}

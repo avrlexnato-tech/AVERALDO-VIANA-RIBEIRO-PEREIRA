@@ -1,0 +1,5 @@
+{
+  "name": "Plano 5K em 30 Min",
+  "description": "Plano de 8 semanas para correr 5 km em 30 minutos com rastreamento GPS.",
+  "requestFramePermissions": ["geolocation"]
+}
