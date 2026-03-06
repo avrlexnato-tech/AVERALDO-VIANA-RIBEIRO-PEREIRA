@@ -1,136 +1,131 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { GoogleMap, useJsApiLoader, Polyline, Marker } from '@react-google-maps/api';
-import { MapPin, Navigation, AlertCircle } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import L from 'leaflet';
+import { Navigation, AlertCircle } from 'lucide-react';
+
+// Fix Leaflet default icon issue
+// @ts-ignore
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
 
 interface MapProps {
-  positions: { latitude: number; longitude: number; speed: number }[];
+  positions: { lat?: number; lng?: number; latitude?: number; longitude?: number; speed: number }[];
   isTracking: boolean;
   className?: string;
 }
 
-const containerStyle = {
-  width: '100%',
-  height: '100%'
-};
-
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-
 export const Map: React.FC<MapProps> = ({ positions, isTracking, className }) => {
-  const { isLoaded, loadError } = useJsApiLoader({
-    id: 'google-map-script',
-    googleMapsApiKey: GOOGLE_MAPS_API_KEY
-  });
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const polylineRef = useRef<L.Polyline | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+  const [isMapReady, setIsMapReady] = useState(false);
 
-  const [map, setMap] = useState<google.maps.Map | null>(null);
+  const getCoords = (p: any): [number, number] => {
+    const lat = p.lat ?? p.latitude ?? 0;
+    const lng = p.lng ?? p.longitude ?? 0;
+    return [lat, lng];
+  };
 
-  const onLoad = useCallback(function callback(mapInstance: google.maps.Map) {
-    setMap(mapInstance);
-  }, []);
-
-  const onUnmount = useCallback(function callback() {
-    setMap(null);
-  }, []);
-
+  // Initialize Map
   useEffect(() => {
-    if (map && positions.length > 0 && isTracking) {
-      const lastPos = positions[positions.length - 1];
-      map.panTo({ lat: lastPos.latitude, lng: lastPos.longitude });
+    if (!mapContainerRef.current || mapRef.current) return;
+
+    const initialPos: L.LatLngExpression = positions.length > 0 
+      ? getCoords(positions[positions.length - 1])
+      : [-23.5505, -46.6333]; // São Paulo default
+
+    const map = L.map(mapContainerRef.current, {
+      center: initialPos,
+      zoom: 15,
+      zoomControl: false,
+      attributionControl: false
+    });
+
+    // Carto Voyager tiles (clean and professional)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/voyager/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+    }).addTo(map);
+
+    polylineRef.current = L.polyline([], {
+      color: '#22c55e',
+      weight: 5,
+      opacity: 0.8,
+      lineJoin: 'round'
+    }).addTo(map);
+
+    // Custom circle marker for current position
+    const icon = L.divIcon({
+      className: 'custom-div-icon',
+      html: `<div style="background-color: #3b82f6; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.3);"></div>`,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8]
+    });
+
+    markerRef.current = L.marker(initialPos, { icon }).addTo(map);
+
+    mapRef.current = map;
+    setIsMapReady(true);
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // Update Path and Marker
+  useEffect(() => {
+    if (!mapRef.current || !polylineRef.current || !markerRef.current || positions.length === 0) return;
+
+    const path = positions.map(p => getCoords(p));
+    polylineRef.current.setLatLngs(path);
+
+    const lastPos = path[path.length - 1];
+    markerRef.current.setLatLng(lastPos);
+
+    if (isTracking) {
+      mapRef.current.panTo(lastPos, { animate: true });
     }
-  }, [map, positions, isTracking]);
+  }, [positions, isTracking]);
+
+  // Fit bounds for history mode
+  useEffect(() => {
+    if (mapRef.current && !isTracking && positions.length > 1) {
+      const path = positions.map(p => getCoords(p));
+      const bounds = L.latLngBounds(path);
+      mapRef.current.fitBounds(bounds, { padding: [30, 30] });
+    }
+  }, [isMapReady, isTracking, positions]);
 
   const handleRecenter = () => {
-    if (map && positions.length > 0) {
-      const lastPos = positions[positions.length - 1];
-      map.setCenter({ lat: lastPos.latitude, lng: lastPos.longitude });
-      map.setZoom(16);
+    if (mapRef.current && positions.length > 0) {
+      const lastPos = getCoords(positions[positions.length - 1]);
+      mapRef.current.setView(lastPos, 16, { animate: true });
     }
   };
 
-  if (!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY === 'YOUR_GOOGLE_MAPS_API_KEY_HERE') {
-    return (
-      <div className={`relative flex flex-col items-center justify-center bg-slate-100 rounded-2xl border-2 border-dashed border-slate-300 ${className}`}>
-        <AlertCircle className="text-slate-400 mb-2" size={32} />
-        <p className="text-slate-500 font-medium text-center px-6">
-          Mapa indisponível no momento
-        </p>
-        <p className="text-slate-400 text-xs text-center px-6 mt-1">
-          Configure a chave do Google Maps para ativar o mapa
-        </p>
-      </div>
-    );
-  }
-
-  if (loadError) {
-    return (
-      <div className={`relative flex flex-col items-center justify-center bg-slate-100 rounded-2xl border-2 border-dashed border-slate-300 ${className}`}>
-        <AlertCircle className="text-red-400 mb-2" size={32} />
-        <p className="text-slate-500 font-medium text-center px-6">
-          Erro ao carregar o mapa
-        </p>
-      </div>
-    );
-  }
-
-  const path = positions.map(p => ({ lat: p.latitude, lng: p.longitude }));
-  const lastPosition = positions.length > 0 ? { lat: positions[positions.length - 1].latitude, lng: positions[positions.length - 1].longitude } : null;
-
-  return isLoaded ? (
+  return (
     <div className={`relative ${className}`}>
-      <div className="w-full h-full rounded-2xl overflow-hidden shadow-inner border border-slate-200">
-        <GoogleMap
-          mapContainerStyle={containerStyle}
-          center={lastPosition || { lat: -23.5505, lng: -46.6333 }} // Default to São Paulo if no positions
-          zoom={16}
-          onLoad={onLoad}
-          onUnmount={onUnmount}
-          options={{
-            disableDefaultUI: true,
-            zoomControl: false,
-            styles: [
-              {
-                featureType: "poi",
-                elementType: "labels",
-                stylers: [{ visibility: "off" }]
-              }
-            ]
-          }}
-        >
-          {path.length > 1 && (
-            <Polyline
-              path={path}
-              options={{
-                strokeColor: "#22c55e",
-                strokeOpacity: 0.8,
-                strokeWeight: 5,
-              }}
-            />
-          )}
-          {lastPosition && (
-            <Marker
-              position={lastPosition}
-              icon={{
-                path: google.maps.SymbolPath.CIRCLE,
-                fillColor: '#3b82f6',
-                fillOpacity: 1,
-                strokeColor: '#ffffff',
-                strokeWeight: 2,
-                scale: 8
-              }}
-            />
-          )}
-        </GoogleMap>
-      </div>
+      <div 
+        ref={mapContainerRef} 
+        className="w-full h-full rounded-2xl overflow-hidden shadow-inner border border-slate-200 z-0"
+      />
       
+      {!isMapReady && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-50 rounded-2xl z-10">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      )}
+
       <button 
         onClick={handleRecenter}
-        className="absolute bottom-4 right-4 bg-white p-3 rounded-full shadow-lg text-blue-600 active:scale-90 transition-transform z-10"
+        className="absolute bottom-4 right-4 bg-white p-3 rounded-full shadow-lg text-blue-600 active:scale-90 transition-transform z-[400]"
       >
         <Navigation size={20} />
       </button>
-    </div>
-  ) : (
-    <div className={`flex items-center justify-center bg-slate-50 rounded-2xl ${className}`}>
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
     </div>
   );
 };
