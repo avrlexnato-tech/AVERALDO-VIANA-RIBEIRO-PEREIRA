@@ -194,7 +194,7 @@ export default function App() {
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="p-6 pb-32"
+        className="p-6 pb-40"
       >
         <header className="flex justify-between items-start mb-8">
           <div>
@@ -274,7 +274,7 @@ export default function App() {
   const renderPlan = () => {
     const weeks = [1, 2, 3, 4, 5, 6, 7, 8];
     return (
-      <div className="p-6 pb-32">
+      <div className="p-6 pb-40">
         <SectionHeader title="Plano de 8 Semanas" subtitle="Sua jornada rumo aos 5K em 30 min" icon={<Calendar size={20} />} />
         
         {weeks.map(week => (
@@ -382,7 +382,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex justify-center gap-6 pb-safe-bottom">
+          <div className="flex justify-center gap-6 pb-safe-extra">
             <button 
               onClick={handleFinishRun}
               className="w-full bg-red-500 text-white py-5 rounded-3xl font-black text-xl shadow-xl shadow-red-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-3"
@@ -398,7 +398,7 @@ export default function App() {
 
   const renderHistory = () => {
     return (
-      <div className="p-6 pb-32">
+      <div className="p-6 pb-40">
         <SectionHeader title="Seu Histórico" subtitle="Acompanhe sua evolução" icon={<History size={20} />} />
         {progress.runs.length === 0 ? (
           <Card className="text-center py-12">
@@ -418,7 +418,7 @@ export default function App() {
 
   const renderMore = () => {
     return (
-      <div className="p-6 pb-32">
+      <div className="p-6 pb-40">
         <SectionHeader title="Configurações" icon={<SettingsIcon size={20} />} />
         
         <Card className="mb-6">
@@ -501,7 +501,7 @@ export default function App() {
     
     return (
       <div className="fixed inset-0 z-[1000] bg-white flex flex-col overflow-y-auto">
-        <div className="p-6 pb-safe-bottom">
+        <div className="p-6 pb-safe-extra">
           <div className="flex justify-between items-center mb-8">
             <button onClick={onClose} className="p-2 -ml-2 text-slate-400">
               <ChevronLeft size={28} />

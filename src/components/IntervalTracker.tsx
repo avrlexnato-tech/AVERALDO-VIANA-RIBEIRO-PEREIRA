@@ -135,7 +135,7 @@ export const IntervalTracker: React.FC<IntervalTrackerProps> = ({
         </div>
       </div>
 
-      <div className="pb-12 flex justify-center gap-6">
+      <div className="pb-safe-extra flex justify-center gap-6">
         <button 
           onClick={() => setIsPaused(!isPaused)}
           className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform ${isPaused ? 'bg-emerald-500' : 'bg-amber-500'}`}

@@ -205,7 +205,7 @@ export const BottomNav: React.FC<{ activeTab: string; onTabChange: (tab: string)
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-slate-100 px-6 pt-3 pb-safe-bottom z-50 flex justify-between items-center">
+    <nav className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-slate-100 px-6 pt-3 pb-safe z-50 flex justify-between items-center">
       {tabs.map((tab) => (
         <button
           key={tab.id}
