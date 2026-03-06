@@ -8,15 +8,17 @@ import {
   Tooltip, 
   ResponsiveContainer,
   AreaChart,
-  Area
+  Area,
+  ReferenceLine
 } from 'recharts';
 
 interface PaceGraphProps {
   data: { distance: number; pace: number }[]; // pace in seconds
+  averagePace?: number; // average pace in seconds
   className?: string;
 }
 
-export const PaceGraph: React.FC<PaceGraphProps> = ({ data, className }) => {
+export const PaceGraph: React.FC<PaceGraphProps> = ({ data, averagePace, className }) => {
   const formatPace = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
@@ -53,6 +55,14 @@ export const PaceGraph: React.FC<PaceGraphProps> = ({ data, className }) => {
             formatter={(val: number) => [formatPace(val), 'Pace']}
             contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
           />
+          {averagePace && (
+            <ReferenceLine 
+              y={averagePace} 
+              stroke="#94a3b8" 
+              strokeDasharray="3 3" 
+              label={{ value: 'Média', position: 'right', fill: '#94a3b8', fontSize: 10 }} 
+            />
+          )}
           <Area 
             type="monotone" 
             dataKey="pace" 

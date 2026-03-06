@@ -84,12 +84,14 @@ export default function App() {
     distance, 
     isActive, 
     segments, 
+    speedSegments,
     calories,
     startTracking, 
     stopTracking,
     setDistance,
     setPositions,
     setSegments,
+    setSpeedSegments,
     setCalories
   } = useGPS(profile.weight);
 
@@ -104,16 +106,15 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isRunning, isPaused]);
 
-  // Voice alerts logic
-  useEffect(() => {
-    if (isRunning && !isPaused && progress.settings.voiceEnabled) {
-      const currentKm = Math.floor(distance);
-      if (currentKm > 0 && segments.length === currentKm) {
-        const lastSegment = segments[segments.length - 1];
-        AudioService.speak(`Quilômetro ${currentKm} concluído. Ritmo: ${lastSegment.pace}.`);
-      }
-    }
-  }, [distance, segments.length, isRunning, isPaused, progress.settings.voiceEnabled]);
+  const calculatePace = () => {
+    if (distance <= 0) return "0:00";
+    const paceInSeconds = timer / distance;
+    const m = Math.floor(paceInSeconds / 60);
+    const s = Math.floor(paceInSeconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const currentPace = calculatePace();
 
   const formatTime = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
@@ -124,15 +125,22 @@ export default function App() {
       : `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  const calculatePace = () => {
-    if (distance <= 0) return "0:00";
-    const paceInSeconds = timer / distance;
-    const m = Math.floor(paceInSeconds / 60);
-    const s = Math.floor(paceInSeconds % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
-  };
-
-  const currentPace = calculatePace();
+  // Voice alerts logic
+  useEffect(() => {
+    if (isRunning && !isPaused && progress.settings.voiceEnabled) {
+      if (progress.settings.alertFrequency === 'distance') {
+        const currentKm = Math.floor(distance);
+        if (currentKm > 0 && segments.length === currentKm) {
+          const lastSegment = segments[segments.length - 1];
+          AudioService.speak(`Quilômetro ${currentKm} concluído. Ritmo: ${lastSegment.pace}.`);
+        }
+      } else if (progress.settings.alertFrequency === 'time') {
+        if (timer > 0 && timer % progress.settings.alertInterval === 0) {
+          AudioService.speak(`Seu pace atual é ${currentPace} por quilômetro.`);
+        }
+      }
+    }
+  }, [distance, segments.length, isRunning, isPaused, progress.settings.voiceEnabled, timer, progress.settings.alertFrequency, progress.settings.alertInterval, currentPace]);
 
   const handleStartRun = (workout?: Workout | CustomWorkout) => {
     if (workout && 'reps' in workout) {
@@ -202,7 +210,8 @@ export default function App() {
       duration: timer,
       averagePace: currentPace,
       calories,
-      path: positions.map(p => ({ lat: p.latitude, lng: p.longitude, speed: p.speed })),
+      path: positions.map(p => ({ lat: p.latitude, lng: p.longitude, speed: p.speed, timestamp: p.timestamp })),
+      speedSegments,
       segments,
       isInterval: isIntervalMode,
       effortLevel: 'moderado' // Default effort level
@@ -219,7 +228,37 @@ export default function App() {
   };
 
   const handleIntervalFinish = (data: any) => {
-    handleFinishRun();
+    stopTracking();
+    const runRecord: RunRecord = {
+      id: Date.now().toString(),
+      date: new Date().toISOString(),
+      distance: data.totalDistance,
+      duration: data.totalTime,
+      averagePace: calculatePaceForStats(data.totalDistance, data.totalTime),
+      calories: data.calories,
+      path: data.positions,
+      speedSegments: data.speedSegments,
+      segments: segments, // use segments from hook
+      isInterval: true,
+      effortLevel: 'moderado'
+    };
+    
+    saveRun(runRecord);
+    setShowSummary(runRecord);
+    setIsRunning(false);
+    setIsPaused(false);
+    setTimer(0);
+    setIsIntervalMode(false);
+    if (progress.settings.soundEnabled) AudioService.playSound('finish');
+    if (progress.settings.voiceEnabled) AudioService.speak("Treino intervalado concluído! Excelente trabalho.");
+  };
+
+  const calculatePaceForStats = (dist: number, time: number) => {
+    if (dist <= 0) return "0:00";
+    const paceInSeconds = time / dist;
+    const m = Math.floor(paceInSeconds / 60);
+    const s = Math.floor(paceInSeconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
   const renderHome = () => {
@@ -415,7 +454,7 @@ export default function App() {
     return (
       <div className="fixed inset-0 bg-slate-900 z-[100] flex flex-col text-white">
         <div className="h-1/3 relative">
-          <Map positions={positions} isTracking={isRunning && !isPaused} className="w-full h-full" />
+          <Map positions={positions} speedSegments={speedSegments} isTracking={isRunning && !isPaused} className="w-full h-full" />
           <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-[1001]">
             <div className="bg-slate-900/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10">
               <p className="text-[10px] font-black uppercase tracking-widest opacity-50">Tempo</p>
@@ -550,6 +589,34 @@ export default function App() {
                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${progress.settings.voiceEnabled ? "left-7" : "left-1"}`} />
               </button>
             </div>
+
+            {progress.settings.voiceEnabled && (
+              <div className="pt-4 border-t border-slate-100 space-y-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">Frequência de Alerta</p>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => updateSettings({ alertFrequency: 'distance', alertInterval: 1 })}
+                      className={cn(
+                        "flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all",
+                        progress.settings.alertFrequency === 'distance' ? "bg-blue-600 text-white border-blue-600 shadow-md" : "bg-white text-slate-400 border-slate-100"
+                      )}
+                    >
+                      A cada 1 KM
+                    </button>
+                    <button 
+                      onClick={() => updateSettings({ alertFrequency: 'time', alertInterval: 60 })}
+                      className={cn(
+                        "flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all",
+                        progress.settings.alertFrequency === 'time' ? "bg-blue-600 text-white border-blue-600 shadow-md" : "bg-white text-slate-400 border-slate-100"
+                      )}
+                    >
+                      A cada 60s
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </Card>
 
@@ -588,9 +655,24 @@ export default function App() {
     );
   };
 
+  const formatPace = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
   const renderSummaryModal = (run: RunRecord, onClose: () => void) => {
     const paceData = run.segments.map(s => ({ distance: s.km, pace: (parseInt(s.pace.split(':')[0]) * 60 + parseInt(s.pace.split(':')[1])) }));
+    const avgPaceSec = (parseInt(run.averagePace.split(':')[0]) * 60 + parseInt(run.averagePace.split(':')[1]));
     
+    const bestPace = run.segments.length > 0 
+      ? Math.min(...run.segments.map(s => (parseInt(s.pace.split(':')[0]) * 60 + parseInt(s.pace.split(':')[1]))))
+      : 0;
+    
+    const worstPace = run.segments.length > 0 
+      ? Math.max(...run.segments.map(s => (parseInt(s.pace.split(':')[0]) * 60 + parseInt(s.pace.split(':')[1]))))
+      : 0;
+
     return (
       <div className="fixed inset-0 z-[1000] bg-white flex flex-col overflow-y-auto">
         <div className="p-6 pb-safe-extra">
@@ -612,10 +694,10 @@ export default function App() {
 
           <SectionHeader title="Rota Percorrida" icon={<MapPin size={20} />} />
           <Card className="mb-8 p-0 overflow-hidden h-64">
-            <Map positions={run.path} isTracking={false} className="w-full h-full" />
+            <Map positions={run.path} speedSegments={run.speedSegments} isTracking={false} className="w-full h-full" />
           </Card>
 
-          <div className="grid grid-cols-3 gap-4 mb-12">
+          <div className="grid grid-cols-3 gap-4 mb-8">
             <div className="text-center">
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Tempo</p>
               <p className="text-xl font-black font-mono text-slate-800">{formatTime(run.duration)}</p>
@@ -630,9 +712,20 @@ export default function App() {
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-4 mb-12">
+            <Card className="bg-emerald-50 border-emerald-100 p-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-1">Melhor Pace</p>
+              <p className="text-2xl font-black font-mono text-emerald-700">{bestPace ? formatPace(bestPace) : '--:--'}</p>
+            </Card>
+            <Card className="bg-red-50 border-red-100 p-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-red-600 mb-1">Pior Pace</p>
+              <p className="text-2xl font-black font-mono text-red-700">{worstPace ? formatPace(worstPace) : '--:--'}</p>
+            </Card>
+          </div>
+
           <SectionHeader title="Análise de Ritmo" icon={<TrendingUp size={20} />} />
           <Card className="mb-8 p-2">
-            <PaceGraph data={paceData} />
+            <PaceGraph data={paceData} averagePace={avgPaceSec} />
           </Card>
 
           <SectionHeader title="Segmentos por KM" icon={<Activity size={20} />} />

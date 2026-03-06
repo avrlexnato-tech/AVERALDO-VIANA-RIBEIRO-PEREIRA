@@ -28,6 +28,19 @@ export interface Segment {
   diffFromPrevious?: number; // seconds
 }
 
+export interface PathPoint {
+  lat: number;
+  lng: number;
+  speed: number;
+  timestamp: number;
+}
+
+export interface SpeedSegment {
+  path: { lat: number; lng: number }[];
+  color: string;
+  speed: number;
+}
+
 export interface RunRecord {
   id: string;
   date: string;
@@ -37,7 +50,8 @@ export interface RunRecord {
   maxPace?: string;
   minPace?: string;
   calories: number;
-  path: { lat: number; lng: number; speed: number }[];
+  path: PathPoint[];
+  speedSegments: SpeedSegment[];
   segments: Segment[];
   effortLevel: 'leve' | 'moderado' | 'forte' | 'muito forte';
   isInterval?: boolean;
@@ -67,8 +81,8 @@ export interface CustomWorkout {
 export interface UserSettings {
   soundEnabled: boolean;
   voiceEnabled: boolean;
-  alertFrequency: 'time' | 'distance';
-  alertInterval: number; // every 5 mins or every 1 km
+  alertFrequency: 'distance' | 'time';
+  alertInterval: number; // e.g., 1 for 1km or 60 for 60s
 }
 
 export interface UserProgress {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Segment } from '../types';
+import { Segment, SpeedSegment, PathPoint } from '../types';
 
 interface Position {
   latitude: number;
@@ -8,16 +8,23 @@ interface Position {
   speed: number;
 }
 
+const getSpeedColor = (speedKmh: number) => {
+  if (speedKmh < 8) return '#ef4444'; // Red
+  if (speedKmh < 10) return '#f97316'; // Orange
+  if (speedKmh < 12) return '#eab308'; // Yellow
+  return '#22c55e'; // Green
+};
+
 export function useGPS(userWeight: number = 71) {
   const [positions, setPositions] = useState<Position[]>([]);
   const [distance, setDistance] = useState(0); // in km
   const [isActive, setIsActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
+  const [speedSegments, setSpeedSegments] = useState<SpeedSegment[]>([]);
   const [calories, setCalories] = useState(0);
   
   const watchId = useRef<number | null>(null);
-  const lastSegmentDistance = useRef(0);
   const lastSegmentTime = useRef(0);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -51,8 +58,8 @@ export function useGPS(userWeight: number = 71) {
     setPositions([]);
     setDistance(0);
     setSegments([]);
+    setSpeedSegments([]);
     setCalories(0);
-    lastSegmentDistance.current = 0;
     lastSegmentTime.current = Date.now();
 
     watchId.current = navigator.geolocation.watchPosition(
@@ -82,7 +89,33 @@ export function useGPS(userWeight: number = 71) {
               // Calories: approx 1 kcal per kg per km
               setCalories(newTotalDistance * userWeight * 1.036);
 
-              // Segments (every 1 km)
+              // Speed Segments for Strava-like coloring
+              const speedKmh = (newPos.speed * 3.6) || (d / ((newPos.timestamp - lastPos.timestamp) / 3600000));
+              const color = getSpeedColor(speedKmh);
+              
+              setSpeedSegments(prevSpeedSegs => {
+                const lastSeg = prevSpeedSegs[prevSpeedSegs.length - 1];
+                if (lastSeg && lastSeg.color === color) {
+                  // Extend last segment
+                  const updatedSeg = {
+                    ...lastSeg,
+                    path: [...lastSeg.path, { lat: newPos.latitude, lng: newPos.longitude }]
+                  };
+                  return [...prevSpeedSegs.slice(0, -1), updatedSeg];
+                } else {
+                  // New segment
+                  return [...prevSpeedSegs, {
+                    color,
+                    speed: speedKmh,
+                    path: [
+                      { lat: lastPos.latitude, lng: lastPos.longitude },
+                      { lat: newPos.latitude, lng: newPos.longitude }
+                    ]
+                  }];
+                }
+              });
+
+              // Splits (every 1 km)
               const currentKm = Math.floor(newTotalDistance);
               const lastKm = Math.floor(distance);
               if (currentKm > lastKm) {
@@ -116,7 +149,7 @@ export function useGPS(userWeight: number = 71) {
       (err) => {
         console.error("GPS Error:", err);
         if (err.code === 1) {
-          setError("Permissão de localização negada. Ative a localização para usar mapa e rastreamento.");
+          setError("Permissão de localização negada. Ative a localização nas configurações do seu celular para usar o mapa e rastreamento.");
         } else if (err.code === 2) {
           setError("Sinal de GPS indisponível. Tente ir para um local aberto.");
         } else if (err.code === 3) {
@@ -156,12 +189,14 @@ export function useGPS(userWeight: number = 71) {
     isActive,
     error,
     segments,
+    speedSegments,
     calories,
     startTracking,
     stopTracking,
     setDistance,
     setPositions,
     setSegments,
+    setSpeedSegments,
     setCalories
   };
 }

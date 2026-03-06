@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
-import { Navigation, AlertCircle } from 'lucide-react';
+import { Navigation, AlertCircle, RefreshCw } from 'lucide-react';
+import { SpeedSegment } from '../types';
 
 // Fix Leaflet default icon issue
 // @ts-ignore
@@ -13,16 +14,20 @@ L.Icon.Default.mergeOptions({
 
 interface MapProps {
   positions: { lat?: number; lng?: number; latitude?: number; longitude?: number; speed: number }[];
+  speedSegments?: SpeedSegment[];
   isTracking: boolean;
   className?: string;
 }
 
-export const Map: React.FC<MapProps> = ({ positions, isTracking, className }) => {
+export const Map: React.FC<MapProps> = ({ positions, speedSegments = [], isTracking, className }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
-  const polylineRef = useRef<L.Polyline | null>(null);
+  const polylinesRef = useRef<L.Polyline[]>([]);
   const markerRef = useRef<L.Marker | null>(null);
+  const startMarkerRef = useRef<L.Marker | null>(null);
+  const endMarkerRef = useRef<L.Marker | null>(null);
   const [isMapReady, setIsMapReady] = useState(false);
+  const [mapError, setMapError] = useState(false);
 
   const getCoords = (p: any): [number, number] => {
     const lat = p.lat ?? p.latitude ?? 0;
@@ -30,73 +35,141 @@ export const Map: React.FC<MapProps> = ({ positions, isTracking, className }) =>
     return [lat, lng];
   };
 
-  // Initialize Map
-  useEffect(() => {
+  const initMap = () => {
     if (!mapContainerRef.current || mapRef.current) return;
+    setMapError(false);
 
-    const initialPos: L.LatLngExpression = positions.length > 0 
-      ? getCoords(positions[positions.length - 1])
-      : [-23.5505, -46.6333]; // São Paulo default
+    try {
+      const initialPos: L.LatLngExpression = positions.length > 0 
+        ? getCoords(positions[positions.length - 1])
+        : [-23.5505, -46.6333]; // São Paulo default
 
-    const map = L.map(mapContainerRef.current, {
-      center: initialPos,
-      zoom: 15,
-      zoomControl: false,
-      attributionControl: false
-    });
+      const map = L.map(mapContainerRef.current, {
+        center: initialPos,
+        zoom: 15,
+        zoomControl: false,
+        attributionControl: false
+      });
 
-    // Carto Voyager tiles (clean and professional)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/voyager/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19,
-    }).addTo(map);
+      // Carto Light tiles (clean and professional)
+      const tiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19,
+      }).addTo(map);
 
-    polylineRef.current = L.polyline([], {
-      color: '#22c55e',
-      weight: 5,
-      opacity: 0.8,
-      lineJoin: 'round'
-    }).addTo(map);
+      tiles.on('tileerror', () => {
+        console.error("Tile loading error");
+        // We don't necessarily set mapError here because some tiles might still load
+      });
 
-    // Custom circle marker for current position
-    const icon = L.divIcon({
-      className: 'custom-div-icon',
-      html: `<div style="background-color: #3b82f6; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.3);"></div>`,
-      iconSize: [16, 16],
-      iconAnchor: [8, 8]
-    });
+      // Custom circle marker for current position
+      const icon = L.divIcon({
+        className: 'custom-div-icon',
+        html: `<div style="background-color: #3b82f6; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.3);"></div>`,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
+      });
 
-    markerRef.current = L.marker(initialPos, { icon }).addTo(map);
+      markerRef.current = L.marker(initialPos, { icon }).addTo(map);
 
-    mapRef.current = map;
-    setIsMapReady(true);
+      mapRef.current = map;
+      setIsMapReady(true);
+    } catch (err) {
+      console.error("Map initialization error:", err);
+      setMapError(true);
+    }
+  };
 
+  useEffect(() => {
+    initMap();
     return () => {
-      map.remove();
-      mapRef.current = null;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
     };
   }, []);
 
   // Update Path and Marker
   useEffect(() => {
-    if (!mapRef.current || !polylineRef.current || !markerRef.current || positions.length === 0) return;
+    if (!mapRef.current || !isMapReady) return;
 
-    const path = positions.map(p => getCoords(p));
-    polylineRef.current.setLatLngs(path);
+    // Clear old polylines
+    polylinesRef.current.forEach(p => p.remove());
+    polylinesRef.current = [];
 
-    const lastPos = path[path.length - 1];
-    markerRef.current.setLatLng(lastPos);
-
-    if (isTracking) {
-      mapRef.current.panTo(lastPos, { animate: true });
+    if (speedSegments.length > 0) {
+      // Draw colored segments
+      speedSegments.forEach(seg => {
+        const poly = L.polyline(seg.path as L.LatLngExpression[], {
+          color: seg.color,
+          weight: 6,
+          opacity: 0.9,
+          lineJoin: 'round'
+        }).addTo(mapRef.current!);
+        polylinesRef.current.push(poly);
+      });
+    } else if (positions.length > 0) {
+      // Fallback to single polyline if speedSegments not provided
+      const path = positions.map(p => getCoords(p));
+      const poly = L.polyline(path, {
+        color: '#3b82f6',
+        weight: 6,
+        opacity: 0.8,
+        lineJoin: 'round'
+      }).addTo(mapRef.current);
+      polylinesRef.current.push(poly);
     }
-  }, [positions, isTracking]);
+
+    if (positions.length > 0) {
+      const lastPos = getCoords(positions[positions.length - 1]);
+      if (markerRef.current) {
+        markerRef.current.setLatLng(lastPos);
+      }
+
+      if (isTracking) {
+        mapRef.current.panTo(lastPos, { animate: true });
+      }
+    }
+
+    // Start/End markers for non-tracking mode (History)
+    if (!isTracking && positions.length > 1) {
+      const startPos = getCoords(positions[0]);
+      const endPos = getCoords(positions[positions.length - 1]);
+
+      if (!startMarkerRef.current) {
+        startMarkerRef.current = L.marker(startPos, {
+          icon: L.divIcon({
+            className: 'start-marker',
+            html: `<div style="background-color: #22c55e; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;"></div>`,
+            iconSize: [12, 12],
+            iconAnchor: [6, 6]
+          })
+        }).addTo(mapRef.current);
+      } else {
+        startMarkerRef.current.setLatLng(startPos);
+      }
+
+      if (!endMarkerRef.current) {
+        endMarkerRef.current = L.marker(endPos, {
+          icon: L.divIcon({
+            className: 'end-marker',
+            html: `<div style="background-color: #ef4444; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;"></div>`,
+            iconSize: [12, 12],
+            iconAnchor: [6, 6]
+          })
+        }).addTo(mapRef.current);
+      } else {
+        endMarkerRef.current.setLatLng(endPos);
+      }
+    }
+  }, [positions, speedSegments, isTracking, isMapReady]);
 
   // Fit bounds for history mode
   useEffect(() => {
     if (mapRef.current && !isTracking && positions.length > 1) {
       const path = positions.map(p => getCoords(p));
       const bounds = L.latLngBounds(path);
-      mapRef.current.fitBounds(bounds, { padding: [30, 30] });
+      mapRef.current.fitBounds(bounds, { padding: [40, 40] });
     }
   }, [isMapReady, isTracking, positions]);
 
@@ -107,25 +180,57 @@ export const Map: React.FC<MapProps> = ({ positions, isTracking, className }) =>
     }
   };
 
+  const handleRetry = () => {
+    if (mapRef.current) {
+      mapRef.current.remove();
+      mapRef.current = null;
+    }
+    initMap();
+  };
+
   return (
     <div className={`relative ${className}`}>
       <div 
         ref={mapContainerRef} 
-        className="w-full h-full rounded-2xl overflow-hidden shadow-inner border border-slate-200 z-0"
+        className="w-full h-full rounded-2xl overflow-hidden shadow-inner border border-slate-200 z-0 bg-slate-100"
       />
       
-      {!isMapReady && (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-50 rounded-2xl z-10">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      {(!isMapReady && !mapError) && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-50/80 backdrop-blur-sm rounded-2xl z-10">
+          <div className="flex flex-col items-center gap-3">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Carregando Mapa...</p>
+          </div>
         </div>
       )}
 
-      <button 
-        onClick={handleRecenter}
-        className="absolute bottom-4 right-4 bg-white p-3 rounded-full shadow-lg text-blue-600 active:scale-90 transition-transform z-[400]"
-      >
-        <Navigation size={20} />
-      </button>
+      {mapError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-50 rounded-2xl z-10 p-6 text-center">
+          <div className="flex flex-col items-center gap-4">
+            <AlertCircle size={40} className="text-red-500" />
+            <div>
+              <p className="font-black text-slate-800 uppercase text-sm mb-1">Erro ao carregar mapa</p>
+              <p className="text-xs text-slate-500">Verifique sua conexão com a internet.</p>
+            </div>
+            <button 
+              onClick={handleRetry}
+              className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest active:scale-95 transition-transform"
+            >
+              <RefreshCw size={14} />
+              Tentar Novamente
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isMapReady && positions.length > 0 && (
+        <button 
+          onClick={handleRecenter}
+          className="absolute bottom-4 right-4 bg-white p-3 rounded-full shadow-lg text-blue-600 active:scale-90 transition-transform z-[400] border border-slate-100"
+        >
+          <Navigation size={20} />
+        </button>
+      )}
     </div>
   );
 };

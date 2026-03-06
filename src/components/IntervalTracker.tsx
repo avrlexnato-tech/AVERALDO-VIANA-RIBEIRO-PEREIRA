@@ -45,6 +45,7 @@ export const IntervalTracker: React.FC<IntervalTrackerProps> = ({
     positions, 
     distance, 
     isActive, 
+    speedSegments,
     calories,
     startTracking, 
     stopTracking,
@@ -135,7 +136,8 @@ export const IntervalTracker: React.FC<IntervalTrackerProps> = ({
         totalTime, 
         totalDistance: distance, 
         calories, 
-        positions: positions.map(p => ({ lat: p.latitude, lng: p.longitude, speed: p.speed })) 
+        positions: positions.map(p => ({ lat: p.latitude, lng: p.longitude, speed: p.speed, timestamp: p.timestamp })),
+        speedSegments
       });
     }
   };
@@ -159,7 +161,7 @@ export const IntervalTracker: React.FC<IntervalTrackerProps> = ({
   return (
     <div className="fixed inset-0 z-[200] bg-slate-900 text-white flex flex-col">
       <div className="h-1/3 relative">
-        <Map positions={positions} isTracking={!isPaused} className="w-full h-full" />
+        <Map positions={positions} speedSegments={speedSegments} isTracking={!isPaused} className="w-full h-full" />
         <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-10">
           <button onClick={onCancel} className="p-3 rounded-2xl bg-slate-900/80 backdrop-blur-md border border-white/10 text-white">
             <ChevronLeft size={24} />
@@ -224,7 +226,8 @@ export const IntervalTracker: React.FC<IntervalTrackerProps> = ({
               totalTime, 
               totalDistance: distance, 
               calories, 
-              positions: positions.map(p => ({ lat: p.latitude, lng: p.longitude, speed: p.speed })) 
+              positions: positions.map(p => ({ lat: p.latitude, lng: p.longitude, speed: p.speed, timestamp: p.timestamp })),
+              speedSegments
             })}
             className="w-20 h-20 bg-red-500 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform"
           >
