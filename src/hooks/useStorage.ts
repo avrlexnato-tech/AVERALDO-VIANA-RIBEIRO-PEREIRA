@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { UserProgress, RunRecord, UserProfile } from '../types';
+import { UserProgress, RunRecord, UserProfile, UserSettings } from '../types';
 
-const STORAGE_KEY = 'plano_5k_progress';
+const STORAGE_KEY = 'plano_5k_progress_v2';
 
 const DEFAULT_PROFILE: UserProfile = {
   age: 50,
@@ -10,10 +10,20 @@ const DEFAULT_PROFILE: UserProfile = {
   targetPace: "6:00/km"
 };
 
+const DEFAULT_SETTINGS: UserSettings = {
+  soundEnabled: true,
+  voiceEnabled: true,
+  alertFrequency: 'distance',
+  alertInterval: 1 // every 1 km
+};
+
 const INITIAL_PROGRESS: UserProgress = {
   currentWeek: 1,
   completedWorkouts: [],
-  runs: []
+  runs: [],
+  evolutionLevel: 'iniciante',
+  planAdjustments: [],
+  settings: DEFAULT_SETTINGS
 };
 
 export function useStorage() {
@@ -39,14 +49,59 @@ export function useStorage() {
   };
 
   const saveRun = (run: RunRecord) => {
+    setProgress(prev => {
+      const newRuns = [run, ...prev.runs];
+      
+      // AI Adjustment Logic
+      let adjustmentMessage = "";
+      let evolutionLevel = prev.evolutionLevel;
+      let factor = 1.0;
+
+      // Simple rule-based AI
+      const paceSeconds = (pace: string) => {
+        const [m, s] = pace.split(':').map(Number);
+        return m * 60 + s;
+      };
+
+      const targetPaceSec = paceSeconds("6:00");
+      const currentPaceSec = paceSeconds(run.averagePace);
+
+      if (currentPaceSec < targetPaceSec - 15) {
+        adjustmentMessage = "Seu desempenho está melhorando. Ajustamos o próximo treino para ser um pouco mais desafiador.";
+        evolutionLevel = 'avançando bem';
+        factor = 1.05;
+      } else if (currentPaceSec > targetPaceSec + 60) {
+        adjustmentMessage = "Percebemos maior esforço nos últimos dias. Reduzimos a carga para melhorar sua recuperação.";
+        evolutionLevel = 'em evolução';
+        factor = 0.95;
+      } else {
+        evolutionLevel = 'consistente';
+      }
+
+      const newAdjustments = adjustmentMessage 
+        ? [{ date: new Date().toISOString(), message: adjustmentMessage, factor }, ...prev.planAdjustments]
+        : prev.planAdjustments;
+
+      return {
+        ...prev,
+        runs: newRuns,
+        evolutionLevel,
+        planAdjustments: newAdjustments
+      };
+    });
+  };
+
+  const updateSettings = (settings: Partial<UserSettings>) => {
     setProgress(prev => ({
       ...prev,
-      runs: [run, ...prev.runs]
+      settings: { ...prev.settings, ...settings }
     }));
   };
 
-  const updateWeek = (week: number) => {
-    setProgress(prev => ({ ...prev, currentWeek: week }));
+  const resetProgress = () => {
+    if (confirm("Tem certeza que deseja resetar todo o seu progresso?")) {
+      setProgress(INITIAL_PROGRESS);
+    }
   };
 
   return {
@@ -54,6 +109,7 @@ export function useStorage() {
     profile,
     completeWorkout,
     saveRun,
-    updateWeek
+    updateSettings,
+    resetProgress
   };
 }

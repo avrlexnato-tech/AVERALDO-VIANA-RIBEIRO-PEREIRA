@@ -1,18 +1,24 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Segment } from '../types';
 
 interface Position {
   latitude: number;
   longitude: number;
   timestamp: number;
-  speed: number | null;
+  speed: number;
 }
 
-export function useGPS() {
+export function useGPS(userWeight: number = 71) {
   const [positions, setPositions] = useState<Position[]>([]);
   const [distance, setDistance] = useState(0); // in km
   const [isActive, setIsActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [segments, setSegments] = useState<Segment[]>([]);
+  const [calories, setCalories] = useState(0);
+  
   const watchId = useRef<number | null>(null);
+  const lastSegmentDistance = useRef(0);
+  const lastSegmentTime = useRef(0);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371; // Earth's radius in km
@@ -26,7 +32,15 @@ export function useGPS() {
     return R * c;
   };
 
-  const startTracking = () => {
+  const calculatePace = (dist: number, timeInSeconds: number) => {
+    if (dist <= 0) return "0:00";
+    const paceInSeconds = timeInSeconds / dist;
+    const m = Math.floor(paceInSeconds / 60);
+    const s = Math.floor(paceInSeconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const startTracking = useCallback(() => {
     if (!navigator.geolocation) {
       setError("Geolocalização não suportada");
       return;
@@ -35,6 +49,10 @@ export function useGPS() {
     setIsActive(true);
     setPositions([]);
     setDistance(0);
+    setSegments([]);
+    setCalories(0);
+    lastSegmentDistance.current = 0;
+    lastSegmentTime.current = Date.now();
 
     watchId.current = navigator.geolocation.watchPosition(
       (position) => {
@@ -42,7 +60,7 @@ export function useGPS() {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           timestamp: position.timestamp,
-          speed: position.coords.speed,
+          speed: position.coords.speed || 0,
         };
 
         setPositions((prev) => {
@@ -54,13 +72,43 @@ export function useGPS() {
               newPos.latitude,
               newPos.longitude
             );
+            
             // Filter out small jumps/noise
-            if (d > 0.002) {
-              setDistance((prevDist) => prevDist + d);
+            if (d > 0.001) { // 1 meter
+              const newTotalDistance = distance + d;
+              setDistance(newTotalDistance);
+
+              // Calories: approx 1 kcal per kg per km
+              setCalories(newTotalDistance * userWeight * 1.036);
+
+              // Segments (every 1 km)
+              const currentKm = Math.floor(newTotalDistance);
+              const lastKm = Math.floor(distance);
+              if (currentKm > lastKm) {
+                const now = Date.now();
+                const timeForKm = (now - lastSegmentTime.current) / 1000;
+                const pace = calculatePace(1, timeForKm);
+                
+                setSegments(prevSegments => {
+                  const prevPaceSec = prevSegments.length > 0 
+                    ? (parseInt(prevSegments[prevSegments.length-1].pace.split(':')[0]) * 60 + parseInt(prevSegments[prevSegments.length-1].pace.split(':')[1]))
+                    : timeForKm;
+                  
+                  return [...prevSegments, {
+                    km: currentKm,
+                    time: timeForKm,
+                    pace: pace,
+                    diffFromPrevious: timeForKm - prevPaceSec
+                  }];
+                });
+                lastSegmentTime.current = now;
+              }
+
               return [...prev, newPos];
             }
             return prev;
           }
+          lastSegmentTime.current = Date.now();
           return [newPos];
         });
       },
@@ -69,19 +117,19 @@ export function useGPS() {
       },
       {
         enableHighAccuracy: true,
-        timeout: 5000,
+        timeout: 10000,
         maximumAge: 0,
       }
     );
-  };
+  }, [distance, userWeight]);
 
-  const stopTracking = () => {
+  const stopTracking = useCallback(() => {
     if (watchId.current !== null) {
       navigator.geolocation.clearWatch(watchId.current);
       watchId.current = null;
     }
     setIsActive(false);
-  };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -96,9 +144,13 @@ export function useGPS() {
     distance,
     isActive,
     error,
+    segments,
+    calories,
     startTracking,
     stopTracking,
     setDistance,
-    setPositions
+    setPositions,
+    setSegments,
+    setCalories
   };
 }

@@ -14,16 +14,31 @@ import {
   Info,
   Dumbbell,
   Flame,
-  AlertTriangle
+  AlertTriangle,
+  Map as MapIcon,
+  Activity
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Workout, WorkoutType, RunRecord, UserProgress, UserProfile } from '../types';
-import { TRAINING_PLAN } from '../data/plan';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+// --- UTILS ---
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 
 // --- COMPONENTS ---
 
-export const Card: React.FC<{ children: React.ReactNode; className?: string; onClick?: string }> = ({ children, className = "" }) => (
-  <div className={`bg-white rounded-2xl p-4 shadow-sm border border-slate-100 ${className}`}>
+export const Card: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void }> = ({ children, className = "", onClick }) => (
+  <div 
+    onClick={onClick}
+    className={cn(
+      "bg-white rounded-3xl p-5 shadow-sm border border-slate-100 transition-all active:scale-[0.99]",
+      onClick && "cursor-pointer hover:border-blue-200",
+      className
+    )}
+  >
     {children}
   </div>
 );
@@ -63,7 +78,7 @@ export const ProgressCircle: React.FC<{ percent: number; size?: number; strokeWi
           strokeLinecap="round"
         />
       </svg>
-      <span className="absolute text-xs font-bold text-slate-700">{Math.round(percent)}%</span>
+      <span className="absolute text-xs font-black text-slate-700">{Math.round(percent)}%</span>
     </div>
   );
 };
@@ -72,7 +87,8 @@ export const TrainingCard: React.FC<{
   workout: Workout; 
   onComplete: (id: string) => void;
   isCompleted: boolean;
-}> = ({ workout, onComplete, isCompleted }) => {
+  onClick?: () => void;
+}> = ({ workout, onComplete, isCompleted, onClick }) => {
   const getTypeColor = (type: WorkoutType) => {
     switch (type) {
       case WorkoutType.LEVE: return "bg-blue-100 text-blue-700";
@@ -85,42 +101,54 @@ export const TrainingCard: React.FC<{
   };
 
   return (
-    <Card className={`mb-4 transition-all ${isCompleted ? 'opacity-75 border-emerald-200 bg-emerald-50/30' : ''}`}>
-      <div className="flex justify-between items-start mb-2">
-        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${getTypeColor(workout.type)}`}>
+    <Card 
+      onClick={onClick}
+      className={cn(
+        "mb-4",
+        isCompleted && "opacity-75 border-emerald-200 bg-emerald-50/30"
+      )}
+    >
+      <div className="flex justify-between items-start mb-3">
+        <span className={cn(
+          "text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full",
+          getTypeColor(workout.type)
+        )}>
           {workout.type}
         </span>
-        <span className="text-xs font-medium text-slate-400">{workout.day}</span>
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{workout.day}</span>
       </div>
-      <h3 className="font-bold text-slate-800 mb-1">{workout.title}</h3>
-      <p className="text-sm text-slate-600 mb-3">{workout.description}</p>
+      <h3 className="font-black text-slate-800 text-lg mb-1">{workout.title}</h3>
+      <p className="text-sm text-slate-500 leading-relaxed mb-4">{workout.description}</p>
       
-      <div className="grid grid-cols-2 gap-2 mb-4">
-        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-          <Clock size={14} className="text-blue-500" />
-          <span>Ritmo: {workout.pace}</span>
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        <div className="flex items-center gap-2 text-xs font-bold text-slate-600 bg-slate-50 p-2 rounded-xl">
+          <Clock size={16} className="text-blue-500" />
+          <span>{workout.pace}</span>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-          <Zap size={14} className="text-amber-500" />
-          <span>Descanso: {workout.rest}</span>
+        <div className="flex items-center gap-2 text-xs font-bold text-slate-600 bg-slate-50 p-2 rounded-xl">
+          <Zap size={16} className="text-amber-500" />
+          <span>{workout.rest}</span>
         </div>
       </div>
 
-      <div className="flex items-center justify-between pt-3 border-top border-slate-100">
-        <div className="flex items-center gap-1 text-[10px] text-slate-400 italic">
-          <Info size={12} />
+      <div className="flex items-center justify-between pt-4 border-t border-slate-50">
+        <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+          <Info size={14} />
           <span>{workout.objective}</span>
         </div>
         {!isCompleted ? (
           <button 
-            onClick={() => onComplete(workout.id)}
-            className="flex items-center gap-1.5 bg-blue-600 text-white px-4 py-1.5 rounded-full text-xs font-bold shadow-sm active:scale-95 transition-transform"
+            onClick={(e) => {
+              e.stopPropagation();
+              onComplete(workout.id);
+            }}
+            className="bg-blue-600 text-white px-5 py-2 rounded-full text-xs font-black shadow-lg shadow-blue-100 active:scale-95 transition-transform"
           >
             Concluir
           </button>
         ) : (
-          <div className="flex items-center gap-1.5 text-emerald-600 font-bold text-xs">
-            <CheckCircle2 size={16} />
+          <div className="flex items-center gap-1.5 text-emerald-600 font-black text-xs">
+            <CheckCircle2 size={18} />
             Concluído
           </div>
         )}
@@ -129,23 +157,40 @@ export const TrainingCard: React.FC<{
   );
 };
 
-export const HistoryCard: React.FC<{ run: RunRecord }> = ({ run }) => (
-  <Card className="mb-3">
+export const HistoryCard: React.FC<{ run: RunRecord; onClick?: () => void }> = ({ run, onClick }) => (
+  <Card className="mb-3" onClick={onClick}>
     <div className="flex justify-between items-center">
-      <div>
-        <p className="text-xs text-slate-400 font-medium">{new Date(run.date).toLocaleDateString('pt-BR')}</p>
-        <h4 className="font-bold text-slate-800">{run.distance.toFixed(2)} km</h4>
+      <div className="flex items-center gap-4">
+        <div className={cn(
+          "w-12 h-12 rounded-2xl flex items-center justify-center",
+          run.isInterval ? "bg-purple-100 text-purple-600" : "bg-blue-100 text-blue-600"
+        )}>
+          {run.isInterval ? <Zap size={24} /> : <Activity size={24} />}
+        </div>
+        <div>
+          <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
+            {new Date(run.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+          </p>
+          <h4 className="font-black text-slate-800 text-lg">{run.distance.toFixed(2)} km</h4>
+        </div>
       </div>
       <div className="text-right">
-        <p className="text-xs text-slate-400 font-medium">Pace Médio</p>
-        <p className="font-bold text-blue-600">{run.averagePace}</p>
+        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Pace Médio</p>
+        <p className="font-black text-blue-600 text-lg">{run.averagePace}</p>
       </div>
     </div>
-    <div className="mt-2 pt-2 border-t border-slate-50 flex gap-4">
-      <div className="flex items-center gap-1 text-[10px] text-slate-500">
-        <Clock size={12} />
-        <span>{Math.floor(run.duration / 60)}m {run.duration % 60}s</span>
+    <div className="mt-4 pt-3 border-t border-slate-50 flex justify-between items-center">
+      <div className="flex gap-4">
+        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+          <Clock size={14} />
+          <span>{Math.floor(run.duration / 60)}m {run.duration % 60}s</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+          <Flame size={14} className="text-orange-500" />
+          <span>{Math.round(run.calories)} kcal</span>
+        </div>
       </div>
+      <ChevronRight size={16} className="text-slate-300" />
     </div>
   </Card>
 );
@@ -160,21 +205,32 @@ export const BottomNav: React.FC<{ activeTab: string; onTabChange: (tab: string)
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-4 pt-2 pb-safe-bottom z-50 flex justify-between items-center">
+    <nav className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-slate-100 px-6 pt-3 pb-safe-bottom z-50 flex justify-between items-center">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onTabChange(tab.id)}
-          className={`flex flex-col items-center justify-center min-w-[64px] py-1 transition-colors ${
+          className={cn(
+            "flex flex-col items-center justify-center min-w-[56px] py-1 transition-all",
             tab.primary 
-              ? 'bg-blue-600 text-white rounded-full w-12 h-12 -mt-8 shadow-lg shadow-blue-200 active:scale-90' 
-              : activeTab === tab.id ? 'text-blue-600' : 'text-slate-400'
-          }`}
+              ? 'bg-blue-600 text-white rounded-full w-14 h-14 -mt-10 shadow-xl shadow-blue-200 active:scale-90 border-4 border-white' 
+              : activeTab === tab.id ? 'text-blue-600 scale-110' : 'text-slate-400'
+          )}
         >
-          <tab.icon size={tab.primary ? 24 : 20} />
-          {!tab.primary && <span className="text-[10px] mt-1 font-medium">{tab.label}</span>}
+          <tab.icon size={tab.primary ? 28 : 22} strokeWidth={activeTab === tab.id ? 2.5 : 2} />
+          {!tab.primary && <span className="text-[10px] mt-1.5 font-black uppercase tracking-widest">{tab.label}</span>}
         </button>
       ))}
     </nav>
   );
 };
+
+export const SectionHeader: React.FC<{ title: string; subtitle?: string; icon?: React.ReactNode }> = ({ title, subtitle, icon }) => (
+  <div className="mb-5">
+    <div className="flex items-center gap-2 mb-1">
+      {icon && <div className="text-blue-600">{icon}</div>}
+      <h2 className="text-xl font-black text-slate-800 tracking-tight uppercase">{title}</h2>
+    </div>
+    {subtitle && <p className="text-sm text-slate-400 font-medium">{subtitle}</p>}
+  </div>
+);
