@@ -1,6 +1,6 @@
-import React, { useEffect, useRef } from 'react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import React, { useState, useCallback, useEffect } from 'react';
+import { GoogleMap, useJsApiLoader, Polyline, Marker } from '@react-google-maps/api';
+import { MapPin, Navigation, AlertCircle } from 'lucide-react';
 
 interface MapProps {
   positions: { latitude: number; longitude: number; speed: number }[];
@@ -8,86 +8,129 @@ interface MapProps {
   className?: string;
 }
 
+const containerStyle = {
+  width: '100%',
+  height: '100%'
+};
+
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+
 export const Map: React.FC<MapProps> = ({ positions, isTracking, className }) => {
-  const mapRef = useRef<L.Map | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const polylineRef = useRef<L.Polyline[]>([]);
+  const { isLoaded, loadError } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY
+  });
 
-  useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
+  const [map, setMap] = useState<google.maps.Map | null>(null);
 
-    mapRef.current = L.map(containerRef.current, {
-      zoomControl: false,
-      attributionControl: false
-    }).setView([0, 0], 13);
+  const onLoad = useCallback(function callback(mapInstance: google.maps.Map) {
+    setMap(mapInstance);
+  }, []);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-    }).addTo(mapRef.current);
-
-    return () => {
-      mapRef.current?.remove();
-      mapRef.current = null;
-    };
+  const onUnmount = useCallback(function callback() {
+    setMap(null);
   }, []);
 
   useEffect(() => {
-    if (!mapRef.current || positions.length === 0) return;
-
-    const lastPos = positions[positions.length - 1];
-    const center: [number, number] = [lastPos.latitude, lastPos.longitude];
-
-    if (positions.length === 1) {
-      mapRef.current.setView(center, 16);
-    } else if (isTracking) {
-      mapRef.current.panTo(center);
+    if (map && positions.length > 0 && isTracking) {
+      const lastPos = positions[positions.length - 1];
+      map.panTo({ lat: lastPos.latitude, lng: lastPos.longitude });
     }
-
-    // Clear old polylines if we want to redraw everything or just add segments
-    // For performance, let's just add the last segment
-    if (positions.length > 1) {
-      const prevPos = positions[positions.length - 2];
-      const color = getColorForSpeed(lastPos.speed);
-      
-      const segment = L.polyline(
-        [
-          [prevPos.latitude, prevPos.longitude],
-          [lastPos.latitude, lastPos.longitude]
-        ],
-        { color, weight: 5, opacity: 0.8 }
-      ).addTo(mapRef.current);
-      
-      polylineRef.current.push(segment);
-    }
-  }, [positions, isTracking]);
-
-  const getColorForSpeed = (speed: number) => {
-    // speed is in m/s. 
-    // 6:00 pace is 2.77 m/s
-    // < 2.5 m/s (red)
-    // 2.5 - 3.0 m/s (yellow)
-    // > 3.0 m/s (green)
-    if (speed < 2.5) return '#ef4444'; // red
-    if (speed < 3.0) return '#f59e0b'; // yellow
-    return '#22c55e'; // green
-  };
+  }, [map, positions, isTracking]);
 
   const handleRecenter = () => {
-    if (mapRef.current && positions.length > 0) {
+    if (map && positions.length > 0) {
       const lastPos = positions[positions.length - 1];
-      mapRef.current.setView([lastPos.latitude, lastPos.longitude], 16);
+      map.setCenter({ lat: lastPos.latitude, lng: lastPos.longitude });
+      map.setZoom(16);
     }
   };
 
-  return (
+  if (!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY === 'YOUR_GOOGLE_MAPS_API_KEY_HERE') {
+    return (
+      <div className={`relative flex flex-col items-center justify-center bg-slate-100 rounded-2xl border-2 border-dashed border-slate-300 ${className}`}>
+        <AlertCircle className="text-slate-400 mb-2" size={32} />
+        <p className="text-slate-500 font-medium text-center px-6">
+          Mapa indisponível no momento
+        </p>
+        <p className="text-slate-400 text-xs text-center px-6 mt-1">
+          Configure a chave do Google Maps para ativar o mapa
+        </p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className={`relative flex flex-col items-center justify-center bg-slate-100 rounded-2xl border-2 border-dashed border-slate-300 ${className}`}>
+        <AlertCircle className="text-red-400 mb-2" size={32} />
+        <p className="text-slate-500 font-medium text-center px-6">
+          Erro ao carregar o mapa
+        </p>
+      </div>
+    );
+  }
+
+  const path = positions.map(p => ({ lat: p.latitude, lng: p.longitude }));
+  const lastPosition = positions.length > 0 ? { lat: positions[positions.length - 1].latitude, lng: positions[positions.length - 1].longitude } : null;
+
+  return isLoaded ? (
     <div className={`relative ${className}`}>
-      <div ref={containerRef} className="w-full h-full rounded-2xl overflow-hidden shadow-inner" />
+      <div className="w-full h-full rounded-2xl overflow-hidden shadow-inner border border-slate-200">
+        <GoogleMap
+          mapContainerStyle={containerStyle}
+          center={lastPosition || { lat: -23.5505, lng: -46.6333 }} // Default to São Paulo if no positions
+          zoom={16}
+          onLoad={onLoad}
+          onUnmount={onUnmount}
+          options={{
+            disableDefaultUI: true,
+            zoomControl: false,
+            styles: [
+              {
+                featureType: "poi",
+                elementType: "labels",
+                stylers: [{ visibility: "off" }]
+              }
+            ]
+          }}
+        >
+          {path.length > 1 && (
+            <Polyline
+              path={path}
+              options={{
+                strokeColor: "#22c55e",
+                strokeOpacity: 0.8,
+                strokeWeight: 5,
+              }}
+            />
+          )}
+          {lastPosition && (
+            <Marker
+              position={lastPosition}
+              icon={{
+                path: google.maps.SymbolPath.CIRCLE,
+                fillColor: '#3b82f6',
+                fillOpacity: 1,
+                strokeColor: '#ffffff',
+                strokeWeight: 2,
+                scale: 8
+              }}
+            />
+          )}
+        </GoogleMap>
+      </div>
+      
       <button 
         onClick={handleRecenter}
-        className="absolute bottom-4 right-4 bg-white p-3 rounded-full shadow-lg text-blue-600 active:scale-90 transition-transform z-[1000]"
+        className="absolute bottom-4 right-4 bg-white p-3 rounded-full shadow-lg text-blue-600 active:scale-90 transition-transform z-10"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+        <Navigation size={20} />
       </button>
+    </div>
+  ) : (
+    <div className={`flex items-center justify-center bg-slate-50 rounded-2xl ${className}`}>
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
     </div>
   );
 };

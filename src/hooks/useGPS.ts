@@ -42,10 +42,11 @@ export function useGPS(userWeight: number = 71) {
 
   const startTracking = useCallback(() => {
     if (!navigator.geolocation) {
-      setError("Geolocalização não suportada");
+      setError("Geolocalização não suportada pelo seu navegador.");
       return;
     }
 
+    setError(null);
     setIsActive(true);
     setPositions([]);
     setDistance(0);
@@ -113,11 +114,21 @@ export function useGPS(userWeight: number = 71) {
         });
       },
       (err) => {
-        setError(err.message);
+        console.error("GPS Error:", err);
+        if (err.code === 1) {
+          setError("Permissão de localização negada. Ative a localização para usar mapa e rastreamento.");
+        } else if (err.code === 2) {
+          setError("Sinal de GPS indisponível. Tente ir para um local aberto.");
+        } else if (err.code === 3) {
+          setError("Tempo esgotado ao tentar obter localização.");
+        } else {
+          setError("Erro ao obter localização: " + err.message);
+        }
+        setIsActive(false);
       },
       {
         enableHighAccuracy: true,
-        timeout: 10000,
+        timeout: 15000,
         maximumAge: 0,
       }
     );

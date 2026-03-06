@@ -48,6 +48,20 @@ export interface IntervalStage {
   duration?: number; // seconds
   distance?: number; // km
   targetPace?: string;
+  recoveryType?: 'parado' | 'caminhada' | 'trote';
+}
+
+export interface CustomWorkout {
+  id: string;
+  name: string;
+  reps: number;
+  distancePerRep: number; // meters
+  targetPace: string;
+  recoveryTime: number; // seconds
+  recoveryType: 'parado' | 'caminhada' | 'trote';
+  warmupTime: number; // minutes
+  cooldownTime: number; // minutes
+  createdAt: string;
 }
 
 export interface UserSettings {
@@ -61,6 +75,7 @@ export interface UserProgress {
   currentWeek: number;
   completedWorkouts: string[]; // IDs
   runs: RunRecord[];
+  customWorkouts: CustomWorkout[];
   evolutionLevel: 'iniciante' | 'em evolução' | 'consistente' | 'avançando bem';
   planAdjustments: { date: string; message: string; factor: number }[];
   settings: UserSettings;

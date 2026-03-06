@@ -19,12 +19,13 @@ import {
   Activity
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Workout, WorkoutType, RunRecord, UserProgress, UserProfile } from '../types';
+import { Workout, WorkoutType, RunRecord, UserProgress, UserProfile, CustomWorkout } from '../types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { Trash2, Copy } from 'lucide-react';
 
 // --- UTILS ---
-function cn(...inputs: ClassValue[]) {
+export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
@@ -156,6 +157,58 @@ export const TrainingCard: React.FC<{
     </Card>
   );
 };
+
+export const CustomWorkoutCard: React.FC<{ 
+  workout: CustomWorkout; 
+  onStart: (workout: CustomWorkout) => void;
+  onDelete: (id: string) => void;
+  onDuplicate: (id: string) => void;
+}> = ({ workout, onStart, onDelete, onDuplicate }) => (
+  <Card className="mb-4">
+    <div className="flex justify-between items-start mb-3">
+      <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-purple-100 text-purple-700">
+        Intervalado
+      </span>
+      <div className="flex gap-2">
+        <button 
+          onClick={(e) => { e.stopPropagation(); onDuplicate(workout.id); }}
+          className="p-2 text-slate-400 hover:text-blue-600 transition-colors"
+        >
+          <Copy size={16} />
+        </button>
+        <button 
+          onClick={(e) => { e.stopPropagation(); onDelete(workout.id); }}
+          className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+        >
+          <Trash2 size={16} />
+        </button>
+      </div>
+    </div>
+    <h3 className="font-black text-slate-800 text-lg mb-1">{workout.name}</h3>
+    <p className="text-sm text-slate-500 leading-relaxed mb-4">
+      {workout.reps} tiros de {workout.distancePerRep}m com {workout.recoveryTime >= 60 ? `${workout.recoveryTime / 60} min` : `${workout.recoveryTime}s`} de recuperação ({workout.recoveryType}).
+    </p>
+    
+    <div className="grid grid-cols-2 gap-3 mb-5">
+      <div className="flex items-center gap-2 text-xs font-bold text-slate-600 bg-slate-50 p-2 rounded-xl">
+        <Zap size={16} className="text-blue-500" />
+        <span>Pace: {workout.targetPace}/km</span>
+      </div>
+      <div className="flex items-center gap-2 text-xs font-bold text-slate-600 bg-slate-50 p-2 rounded-xl">
+        <Clock size={16} className="text-amber-500" />
+        <span>Total: ~{Math.round((workout.reps * workout.distancePerRep) / 1000)}km</span>
+      </div>
+    </div>
+
+    <button 
+      onClick={() => onStart(workout)}
+      className="w-full bg-slate-900 text-white py-3 rounded-2xl font-black text-sm shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
+    >
+      <Play size={16} fill="currentColor" />
+      INICIAR TREINO
+    </button>
+  </Card>
+);
 
 export const HistoryCard: React.FC<{ run: RunRecord; onClick?: () => void }> = ({ run, onClick }) => (
   <Card className="mb-3" onClick={onClick}>

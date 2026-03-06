@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { UserProgress, RunRecord, UserProfile, UserSettings } from '../types';
+import { UserProgress, RunRecord, UserProfile, UserSettings, CustomWorkout } from '../types';
 
-const STORAGE_KEY = 'plano_5k_progress_v2';
+const STORAGE_KEY = 'plano_5k_progress_v3';
 
 const DEFAULT_PROFILE: UserProfile = {
   age: 50,
@@ -21,6 +21,7 @@ const INITIAL_PROGRESS: UserProgress = {
   currentWeek: 1,
   completedWorkouts: [],
   runs: [],
+  customWorkouts: [],
   evolutionLevel: 'iniciante',
   planAdjustments: [],
   settings: DEFAULT_SETTINGS
@@ -98,6 +99,46 @@ export function useStorage() {
     }));
   };
 
+  const saveCustomWorkout = (workout: CustomWorkout) => {
+    setProgress(prev => {
+      const exists = prev.customWorkouts.find(w => w.id === workout.id);
+      if (exists) {
+        return {
+          ...prev,
+          customWorkouts: prev.customWorkouts.map(w => w.id === workout.id ? workout : w)
+        };
+      }
+      return {
+        ...prev,
+        customWorkouts: [workout, ...prev.customWorkouts]
+      };
+    });
+  };
+
+  const deleteCustomWorkout = (id: string) => {
+    setProgress(prev => ({
+      ...prev,
+      customWorkouts: prev.customWorkouts.filter(w => w.id !== id)
+    }));
+  };
+
+  const duplicateCustomWorkout = (id: string) => {
+    setProgress(prev => {
+      const workout = prev.customWorkouts.find(w => w.id === id);
+      if (!workout) return prev;
+      const newWorkout: CustomWorkout = {
+        ...workout,
+        id: Date.now().toString(),
+        name: `${workout.name} (Cópia)`,
+        createdAt: new Date().toISOString()
+      };
+      return {
+        ...prev,
+        customWorkouts: [newWorkout, ...prev.customWorkouts]
+      };
+    });
+  };
+
   const resetProgress = () => {
     if (confirm("Tem certeza que deseja resetar todo o seu progresso?")) {
       setProgress(INITIAL_PROGRESS);
@@ -110,6 +151,9 @@ export function useStorage() {
     completeWorkout,
     saveRun,
     updateSettings,
+    saveCustomWorkout,
+    deleteCustomWorkout,
+    duplicateCustomWorkout,
     resetProgress
   };
 }

@@ -19,7 +19,9 @@ import {
   Trash2,
   Info,
   ChevronRight,
-  Activity
+  Activity,
+  Plus,
+  History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -29,7 +31,8 @@ import {
   UserProgress, 
   UserProfile, 
   UserSettings,
-  IntervalStage
+  IntervalStage,
+  CustomWorkout
 } from './types';
 import { TRAINING_PLAN } from './data/plan';
 import { 
@@ -38,7 +41,9 @@ import {
   TrainingCard, 
   HistoryCard, 
   BottomNav,
-  SectionHeader
+  SectionHeader,
+  CustomWorkoutCard,
+  cn
 } from './components/UI';
 import { useGPS } from './hooks/useGPS';
 import { useStorage } from './hooks/useStorage';
@@ -46,11 +51,22 @@ import { Map } from './components/Map';
 import { AudioService } from './services/audioService';
 import { PaceGraph } from './components/PaceGraph';
 import { IntervalTracker } from './components/IntervalTracker';
+import { CustomIntervalForm } from './components/CustomIntervalForm';
 
 // --- MAIN APP ---
 
 export default function App() {
-  const { progress, profile, completeWorkout, saveRun, updateSettings, resetProgress } = useStorage();
+  const { 
+    progress, 
+    profile, 
+    completeWorkout, 
+    saveRun, 
+    updateSettings, 
+    saveCustomWorkout,
+    deleteCustomWorkout,
+    duplicateCustomWorkout,
+    resetProgress 
+  } = useStorage();
   const [activeTab, setActiveTab] = useState('home');
   const [isRunning, setIsRunning] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -59,6 +75,9 @@ export default function App() {
   const [selectedRun, setSelectedRun] = useState<RunRecord | null>(null);
   const [isIntervalMode, setIsIntervalMode] = useState(false);
   const [currentIntervalStages, setCurrentIntervalStages] = useState<IntervalStage[]>([]);
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [editingWorkout, setEditingWorkout] = useState<CustomWorkout | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'run' | 'interval'>('all');
 
   const { 
     positions, 
@@ -115,9 +134,29 @@ export default function App() {
 
   const currentPace = calculatePace();
 
-  const handleStartRun = (workout?: Workout) => {
-    if (workout?.type === WorkoutType.INTERVALADO) {
-      // Create interval stages based on workout description
+  const handleStartRun = (workout?: Workout | CustomWorkout) => {
+    if (workout && 'reps' in workout) {
+      // Custom Workout
+      const stages: IntervalStage[] = [];
+      
+      if (workout.warmupTime > 0) {
+        stages.push({ type: 'AQUECIMENTO', duration: workout.warmupTime * 60, targetPace: '7:00' });
+      }
+      
+      for (let i = 0; i < workout.reps; i++) {
+        const durationPerRep = Math.round((workout.distancePerRep / 1000) * (parseInt(workout.targetPace.split(':')[0]) * 60 + parseInt(workout.targetPace.split(':')[1])));
+        stages.push({ type: 'FORTE', duration: durationPerRep, targetPace: workout.targetPace });
+        stages.push({ type: 'RECUPERAÇÃO', duration: workout.recoveryTime, targetPace: '8:00', recoveryType: workout.recoveryType });
+      }
+      
+      if (workout.cooldownTime > 0) {
+        stages.push({ type: 'VOLTA À CALMA', duration: workout.cooldownTime * 60, targetPace: '7:30' });
+      }
+      
+      setCurrentIntervalStages(stages);
+      setIsIntervalMode(true);
+    } else if (workout && 'type' in workout && workout.type === WorkoutType.INTERVALADO) {
+      // Plan Workout
       const stages: IntervalStage[] = [
         { type: 'AQUECIMENTO', duration: 300, targetPace: '7:00' }
       ];
@@ -126,7 +165,7 @@ export default function App() {
       if (match) {
         const reps = parseInt(match[1]);
         const dist = parseInt(match[2]);
-        const durationPerRep = Math.round((dist / 1000) * 360); 
+        const durationPerRep = Math.round((dist / 1000) * (parseInt(workout.pace.split(':')[0]) * 60 + parseInt(workout.pace.split(':')[1]))); 
         
         for (let i = 0; i < reps; i++) {
           stages.push({ type: 'FORTE', duration: durationPerRep, targetPace: workout.pace });
@@ -259,6 +298,34 @@ export default function App() {
         )}
 
         <div className="mt-8">
+          <SectionHeader 
+            title="Intervalados Personalizados" 
+            subtitle="Crie seus próprios treinos de tiro"
+            icon={<Zap size={20} />}
+          />
+          
+          <div className="space-y-4">
+            {progress.customWorkouts.map(workout => (
+              <CustomWorkoutCard 
+                key={workout.id}
+                workout={workout}
+                onStart={handleStartRun}
+                onDelete={deleteCustomWorkout}
+                onDuplicate={duplicateCustomWorkout}
+              />
+            ))}
+            
+            <button 
+              onClick={() => { setEditingWorkout(null); setShowCustomForm(true); }}
+              className="w-full border-2 border-dashed border-slate-200 rounded-3xl py-6 flex flex-col items-center justify-center gap-2 text-slate-400 active:bg-slate-50 transition-colors"
+            >
+              <Plus size={32} />
+              <span className="text-xs font-black uppercase tracking-widest">Novo Treino Personalizado</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-12">
           <button 
             onClick={() => setActiveTab('run')}
             className="w-full bg-blue-600 text-white py-5 rounded-3xl font-black text-lg shadow-xl shadow-blue-100 active:scale-[0.98] transition-all flex items-center justify-center gap-3"
@@ -308,6 +375,7 @@ export default function App() {
           onCancel={() => setIsIntervalMode(false)}
           isSoundEnabled={progress.settings.soundEnabled}
           isVoiceEnabled={progress.settings.voiceEnabled}
+          weight={profile.weight}
         />
       );
     }
@@ -397,17 +465,41 @@ export default function App() {
   };
 
   const renderHistory = () => {
+    const filteredRuns = progress.runs.filter(run => {
+      if (historyFilter === 'run') return !run.isInterval;
+      if (historyFilter === 'interval') return run.isInterval;
+      return true;
+    });
+
     return (
       <div className="p-6 pb-40">
         <SectionHeader title="Seu Histórico" subtitle="Acompanhe sua evolução" icon={<History size={20} />} />
-        {progress.runs.length === 0 ? (
+        
+        <div className="flex gap-2 mb-6">
+          {(['all', 'run', 'interval'] as const).map((filter) => (
+            <button
+              key={filter}
+              onClick={() => setHistoryFilter(filter)}
+              className={cn(
+                "px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all",
+                historyFilter === filter 
+                  ? "bg-blue-600 text-white shadow-lg shadow-blue-100" 
+                  : "bg-white text-slate-400 border border-slate-100"
+              )}
+            >
+              {filter === 'all' ? 'Tudo' : filter === 'run' ? 'Corridas' : 'Intervalados'}
+            </button>
+          ))}
+        </div>
+
+        {filteredRuns.length === 0 ? (
           <Card className="text-center py-12">
             <Activity size={48} className="text-slate-200 mx-auto mb-4" />
-            <p className="text-slate-400 font-bold">Nenhuma corrida registrada ainda.</p>
+            <p className="text-slate-400 font-bold">Nenhuma atividade encontrada.</p>
           </Card>
         ) : (
           <div className="space-y-1">
-            {progress.runs.map(run => (
+            {filteredRuns.map(run => (
               <HistoryCard key={run.id} run={run} onClick={() => setSelectedRun(run)} />
             ))}
           </div>
@@ -518,6 +610,11 @@ export default function App() {
             </h3>
           </div>
 
+          <SectionHeader title="Rota Percorrida" icon={<MapPin size={20} />} />
+          <Card className="mb-8 p-0 overflow-hidden h-64">
+            <Map positions={run.path} isTracking={false} className="w-full h-full" />
+          </Card>
+
           <div className="grid grid-cols-3 gap-4 mb-12">
             <div className="text-center">
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Tempo</p>
@@ -579,6 +676,20 @@ export default function App() {
       )}
 
       <AnimatePresence>
+        {showCustomForm && (
+          <CustomIntervalForm 
+            initialData={editingWorkout}
+            onSave={(workout) => {
+              saveCustomWorkout(workout);
+              setShowCustomForm(false);
+              setEditingWorkout(null);
+            }}
+            onCancel={() => {
+              setShowCustomForm(false);
+              setEditingWorkout(null);
+            }}
+          />
+        )}
         {showSummary && renderSummaryModal(showSummary, () => setShowSummary(null))}
         {selectedRun && renderSummaryModal(selectedRun, () => setSelectedRun(null))}
       </AnimatePresence>
