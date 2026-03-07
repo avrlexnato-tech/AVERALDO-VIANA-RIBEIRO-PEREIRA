@@ -17,9 +17,11 @@ const getSpeedColor = (speedKmh: number) => {
 
 export function useGPS(userWeight: number = 71) {
   const [positions, setPositions] = useState<Position[]>([]);
+  const [currentPosition, setCurrentPosition] = useState<Position | null>(null);
   const [distance, setDistance] = useState(0); // in km
   const [isActive, setIsActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isWaitingForGPS, setIsWaitingForGPS] = useState(false);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [speedSegments, setSpeedSegments] = useState<SpeedSegment[]>([]);
   const [calories, setCalories] = useState(0);
@@ -47,6 +49,45 @@ export function useGPS(userWeight: number = 71) {
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
+  const gpsOptions = {
+    enableHighAccuracy: true,
+    timeout: 15000,
+    maximumAge: 0,
+  };
+
+  const requestInitialPosition = useCallback(() => {
+    if (!navigator.geolocation) {
+      setError("Geolocalização não suportada pelo seu navegador.");
+      return;
+    }
+
+    setIsWaitingForGPS(true);
+    setError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const pos: Position = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          timestamp: position.timestamp,
+          speed: position.coords.speed || 0,
+        };
+        setCurrentPosition(pos);
+        setIsWaitingForGPS(false);
+      },
+      (err) => {
+        console.error("Initial GPS Error:", err);
+        setIsWaitingForGPS(false);
+        if (err.code === 1) {
+          setError("Permissão de localização negada. Ative a localização nas configurações do seu celular.");
+        } else {
+          setError("Não foi possível obter sua localização atual. Verifique seu GPS.");
+        }
+      },
+      gpsOptions
+    );
+  }, []);
+
   const startTracking = useCallback(() => {
     if (!navigator.geolocation) {
       setError("Geolocalização não suportada pelo seu navegador.");
@@ -70,6 +111,8 @@ export function useGPS(userWeight: number = 71) {
           timestamp: position.timestamp,
           speed: position.coords.speed || 0,
         };
+
+        setCurrentPosition(newPos);
 
         setPositions((prev) => {
           if (prev.length > 0) {
@@ -159,11 +202,7 @@ export function useGPS(userWeight: number = 71) {
         }
         setIsActive(false);
       },
-      {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0,
-      }
+      gpsOptions
     );
   }, [distance, userWeight]);
 
@@ -185,14 +224,17 @@ export function useGPS(userWeight: number = 71) {
 
   return {
     positions,
+    currentPosition,
     distance,
     isActive,
+    isWaitingForGPS,
     error,
     segments,
     speedSegments,
     calories,
     startTracking,
     stopTracking,
+    requestInitialPosition,
     setDistance,
     setPositions,
     setSegments,

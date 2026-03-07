@@ -81,19 +81,30 @@ export default function App() {
 
   const { 
     positions, 
+    currentPosition,
     distance, 
     isActive, 
+    isWaitingForGPS,
+    error: gpsError,
     segments, 
     speedSegments,
     calories,
     startTracking, 
     stopTracking,
+    requestInitialPosition,
     setDistance,
     setPositions,
     setSegments,
     setSpeedSegments,
     setCalories
   } = useGPS(profile.weight);
+
+  // Request initial position when entering run tab
+  useEffect(() => {
+    if (activeTab === 'run' && !isRunning && !isIntervalMode && !currentPosition && !isWaitingForGPS) {
+      requestInitialPosition();
+    }
+  }, [activeTab, isRunning, isIntervalMode, currentPosition, isWaitingForGPS, requestInitialPosition]);
 
   // Timer logic
   useEffect(() => {
@@ -143,6 +154,21 @@ export default function App() {
   }, [distance, segments.length, isRunning, isPaused, progress.settings.voiceEnabled, timer, progress.settings.alertFrequency, progress.settings.alertInterval, currentPace]);
 
   const handleStartRun = (workout?: Workout | CustomWorkout) => {
+    if (!currentPosition && !isWaitingForGPS) {
+      setActiveTab('run');
+      requestInitialPosition();
+      return;
+    }
+    
+    if (isWaitingForGPS) {
+      setActiveTab('run');
+      return;
+    }
+
+    setIsRunning(true);
+    setIsPaused(false);
+    setTimer(0);
+    
     if (workout && 'reps' in workout) {
       // Custom Workout
       const stages: IntervalStage[] = [];
@@ -186,9 +212,6 @@ export default function App() {
       setCurrentIntervalStages(stages);
       setIsIntervalMode(true);
     } else {
-      setIsRunning(true);
-      setIsPaused(false);
-      setTimer(0);
       startTracking();
       if (progress.settings.soundEnabled) AudioService.playSound('start');
       if (progress.settings.voiceEnabled) AudioService.speak("Iniciando corrida. Bom treino!");
@@ -425,20 +448,49 @@ export default function App() {
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="text-center"
+            className="text-center w-full max-w-xs"
           >
             <div className="w-24 h-24 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-blue-500/20">
-              <MapPin size={48} />
+              {isWaitingForGPS ? (
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white"></div>
+              ) : (
+                <MapPin size={48} />
+              )}
             </div>
-            <h2 className="text-3xl font-black mb-4 tracking-tight">Pronto para correr?</h2>
-            <p className="text-slate-400 mb-12 max-w-xs mx-auto">Certifique-se de estar em um local aberto para melhor sinal de GPS.</p>
             
-            <button 
-              onClick={() => handleStartRun()}
-              className="w-64 bg-blue-600 text-white py-5 rounded-full font-black text-xl shadow-xl shadow-blue-500/20 active:scale-95 transition-transform"
-            >
-              COMEÇAR AGORA
-            </button>
+            <h2 className="text-3xl font-black mb-4 tracking-tight">
+              {isWaitingForGPS ? "Obtendo Localização..." : "Pronto para correr?"}
+            </h2>
+            
+            <p className="text-slate-400 mb-12">
+              {isWaitingForGPS 
+                ? "Aguardando sinal de GPS de alta precisão..." 
+                : gpsError 
+                  ? gpsError 
+                  : "Certifique-se de estar em um local aberto para melhor sinal de GPS."}
+            </p>
+            
+            {gpsError ? (
+              <button 
+                onClick={() => requestInitialPosition()}
+                className="w-full bg-slate-700 text-white py-5 rounded-full font-black text-xl active:scale-95 transition-transform mb-4"
+              >
+                TENTAR NOVAMENTE
+              </button>
+            ) : (
+              <button 
+                onClick={() => handleStartRun()}
+                disabled={isWaitingForGPS || !currentPosition}
+                className={cn(
+                  "w-full py-5 rounded-full font-black text-xl shadow-xl active:scale-95 transition-transform",
+                  (isWaitingForGPS || !currentPosition) 
+                    ? "bg-slate-800 text-slate-500 cursor-not-allowed" 
+                    : "bg-blue-600 text-white shadow-blue-500/20"
+                )}
+              >
+                COMEÇAR AGORA
+              </button>
+            )}
             
             <button 
               onClick={() => setActiveTab('home')}
@@ -454,7 +506,13 @@ export default function App() {
     return (
       <div className="fixed inset-0 bg-slate-900 z-[100] flex flex-col text-white">
         <div className="h-1/3 relative">
-          <Map positions={positions} speedSegments={speedSegments} isTracking={isRunning && !isPaused} className="w-full h-full" />
+          <Map 
+            positions={positions} 
+            currentPosition={currentPosition}
+            speedSegments={speedSegments} 
+            isTracking={isRunning && !isPaused} 
+            className="w-full h-full" 
+          />
           <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-[1001]">
             <div className="bg-slate-900/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10">
               <p className="text-[10px] font-black uppercase tracking-widest opacity-50">Tempo</p>

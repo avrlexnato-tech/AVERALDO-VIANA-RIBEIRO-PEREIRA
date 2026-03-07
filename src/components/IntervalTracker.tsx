@@ -43,6 +43,7 @@ export const IntervalTracker: React.FC<IntervalTrackerProps> = ({
   
   const { 
     positions, 
+    currentPosition,
     distance, 
     isActive, 
     speedSegments,
@@ -161,7 +162,13 @@ export const IntervalTracker: React.FC<IntervalTrackerProps> = ({
   return (
     <div className="fixed inset-0 z-[200] bg-slate-900 text-white flex flex-col">
       <div className="h-1/3 relative">
-        <Map positions={positions} speedSegments={speedSegments} isTracking={!isPaused} className="w-full h-full" />
+        <Map 
+          positions={positions} 
+          currentPosition={currentPosition}
+          speedSegments={speedSegments} 
+          isTracking={!isPaused} 
+          className="w-full h-full" 
+        />
         <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-10">
           <button onClick={onCancel} className="p-3 rounded-2xl bg-slate-900/80 backdrop-blur-md border border-white/10 text-white">
             <ChevronLeft size={24} />

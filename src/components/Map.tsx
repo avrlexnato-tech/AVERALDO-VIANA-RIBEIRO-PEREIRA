@@ -14,12 +14,13 @@ L.Icon.Default.mergeOptions({
 
 interface MapProps {
   positions: { lat?: number; lng?: number; latitude?: number; longitude?: number; speed: number }[];
+  currentPosition?: { latitude: number; longitude: number } | null;
   speedSegments?: SpeedSegment[];
   isTracking: boolean;
   className?: string;
 }
 
-export const Map: React.FC<MapProps> = ({ positions, speedSegments = [], isTracking, className }) => {
+export const Map: React.FC<MapProps> = ({ positions, currentPosition, speedSegments = [], isTracking, className }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const polylinesRef = useRef<L.Polyline[]>([]);
@@ -28,6 +29,7 @@ export const Map: React.FC<MapProps> = ({ positions, speedSegments = [], isTrack
   const endMarkerRef = useRef<L.Marker | null>(null);
   const [isMapReady, setIsMapReady] = useState(false);
   const [mapError, setMapError] = useState(false);
+  const [autoFollow, setAutoFollow] = useState(true);
 
   const getCoords = (p: any): [number, number] => {
     const lat = p.lat ?? p.latitude ?? 0;
@@ -37,34 +39,48 @@ export const Map: React.FC<MapProps> = ({ positions, speedSegments = [], isTrack
 
   const initMap = () => {
     if (!mapContainerRef.current || mapRef.current) return;
+    
+    // Determine initial position
+    let initialPos: L.LatLngExpression | null = null;
+    
+    if (positions.length > 0) {
+      initialPos = getCoords(positions[positions.length - 1]);
+    } else if (currentPosition) {
+      initialPos = [currentPosition.latitude, currentPosition.longitude];
+    }
+
+    // If we still don't have a position, we wait for one before initializing
+    if (!initialPos) return;
+
     setMapError(false);
 
     try {
-      const initialPos: L.LatLngExpression = positions.length > 0 
-        ? getCoords(positions[positions.length - 1])
-        : [-23.5505, -46.6333]; // São Paulo default
-
       const map = L.map(mapContainerRef.current, {
         center: initialPos,
-        zoom: 15,
+        zoom: 16,
         zoomControl: false,
         attributionControl: false
       });
 
-      // Carto Light tiles (clean and professional)
-      const tiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      // Detect manual interaction
+      map.on('movestart', (e: any) => {
+        if (e.originalEvent) { // Only if triggered by user interaction
+          setAutoFollow(false);
+        }
+      });
+
+      // Carto Light tiles
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         maxZoom: 19,
       }).addTo(map);
 
-      tiles.on('tileerror', () => {
-        console.error("Tile loading error");
-        // We don't necessarily set mapError here because some tiles might still load
-      });
-
       // Custom circle marker for current position
       const icon = L.divIcon({
-        className: 'custom-div-icon',
-        html: `<div style="background-color: #3b82f6; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.3);"></div>`,
+        className: 'current-pos-marker',
+        html: `<div class="relative">
+          <div class="absolute -inset-2 bg-blue-500/20 rounded-full animate-ping"></div>
+          <div style="background-color: #3b82f6; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.3); position: relative; z-index: 10;"></div>
+        </div>`,
         iconSize: [16, 16],
         iconAnchor: [8, 8]
       });
@@ -80,7 +96,12 @@ export const Map: React.FC<MapProps> = ({ positions, speedSegments = [], isTrack
   };
 
   useEffect(() => {
-    initMap();
+    if (!isMapReady) {
+      initMap();
+    }
+  }, [positions, currentPosition, isMapReady]);
+
+  useEffect(() => {
     return () => {
       if (mapRef.current) {
         mapRef.current.remove();
@@ -98,7 +119,6 @@ export const Map: React.FC<MapProps> = ({ positions, speedSegments = [], isTrack
     polylinesRef.current = [];
 
     if (speedSegments.length > 0) {
-      // Draw colored segments
       speedSegments.forEach(seg => {
         const poly = L.polyline(seg.path as L.LatLngExpression[], {
           color: seg.color,
@@ -109,7 +129,6 @@ export const Map: React.FC<MapProps> = ({ positions, speedSegments = [], isTrack
         polylinesRef.current.push(poly);
       });
     } else if (positions.length > 0) {
-      // Fallback to single polyline if speedSegments not provided
       const path = positions.map(p => getCoords(p));
       const poly = L.polyline(path, {
         color: '#3b82f6',
@@ -120,18 +139,21 @@ export const Map: React.FC<MapProps> = ({ positions, speedSegments = [], isTrack
       polylinesRef.current.push(poly);
     }
 
-    if (positions.length > 0) {
-      const lastPos = getCoords(positions[positions.length - 1]);
+    const latestPos = positions.length > 0 
+      ? getCoords(positions[positions.length - 1])
+      : (currentPosition ? [currentPosition.latitude, currentPosition.longitude] as [number, number] : null);
+
+    if (latestPos) {
       if (markerRef.current) {
-        markerRef.current.setLatLng(lastPos);
+        markerRef.current.setLatLng(latestPos);
       }
 
-      if (isTracking) {
-        mapRef.current.panTo(lastPos, { animate: true });
+      if (isTracking && autoFollow) {
+        mapRef.current.setView(latestPos, mapRef.current.getZoom(), { animate: true });
       }
     }
 
-    // Start/End markers for non-tracking mode (History)
+    // Start/End markers for History
     if (!isTracking && positions.length > 1) {
       const startPos = getCoords(positions[0]);
       const endPos = getCoords(positions[positions.length - 1]);
@@ -162,7 +184,7 @@ export const Map: React.FC<MapProps> = ({ positions, speedSegments = [], isTrack
         endMarkerRef.current.setLatLng(endPos);
       }
     }
-  }, [positions, speedSegments, isTracking, isMapReady]);
+  }, [positions, currentPosition, speedSegments, isTracking, isMapReady, autoFollow]);
 
   // Fit bounds for history mode
   useEffect(() => {
@@ -174,9 +196,15 @@ export const Map: React.FC<MapProps> = ({ positions, speedSegments = [], isTrack
   }, [isMapReady, isTracking, positions]);
 
   const handleRecenter = () => {
-    if (mapRef.current && positions.length > 0) {
-      const lastPos = getCoords(positions[positions.length - 1]);
-      mapRef.current.setView(lastPos, 16, { animate: true });
+    if (mapRef.current) {
+      const latestPos = positions.length > 0 
+        ? getCoords(positions[positions.length - 1])
+        : (currentPosition ? [currentPosition.latitude, currentPosition.longitude] as [number, number] : null);
+      
+      if (latestPos) {
+        setAutoFollow(true);
+        mapRef.current.setView(latestPos, 16, { animate: true });
+      }
     }
   };
 
