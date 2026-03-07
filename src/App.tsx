@@ -87,6 +87,7 @@ export default function App() {
     isWaitingForGPS,
     accuracyLevel,
     precisionMessage,
+    lastKnownPosition,
     error: gpsError,
     segments, 
     speedSegments,
@@ -141,15 +142,22 @@ export default function App() {
   // Voice alerts logic
   useEffect(() => {
     if (isRunning && !isPaused && progress.settings.voiceEnabled) {
+      const formatPaceForVoice = (paceStr: string) => {
+        const [m, s] = paceStr.split(':').map(Number);
+        const minText = m === 1 ? 'um minuto' : `${m} minutos`;
+        const secText = s === 0 ? '' : s === 1 ? 'e um segundo' : `e ${s} segundos`;
+        return `${minText} ${secText}`;
+      };
+
       if (progress.settings.alertFrequency === 'distance') {
         const currentKm = Math.floor(distance);
         if (currentKm > 0 && segments.length === currentKm) {
           const lastSegment = segments[segments.length - 1];
-          AudioService.speak(`Quilômetro ${currentKm} concluído. Ritmo: ${lastSegment.pace}.`);
+          AudioService.speak(`${currentKm} quilômetro concluído. Pace médio: ${formatPaceForVoice(lastSegment.pace)}.`);
         }
       } else if (progress.settings.alertFrequency === 'time') {
         if (timer > 0 && timer % progress.settings.alertInterval === 0) {
-          AudioService.speak(`Seu pace atual é ${currentPace} por quilômetro.`);
+          AudioService.speak(`Seu pace atual é ${formatPaceForVoice(currentPace)} por quilômetro.`);
         }
       }
     }
@@ -461,7 +469,7 @@ export default function App() {
             </div>
             
             <h2 className="text-3xl font-black mb-4 tracking-tight">
-              {isWaitingForGPS && !currentPosition ? "Obtendo Localização..." : "Pronto para correr?"}
+              {isWaitingForGPS && !currentPosition && !lastKnownPosition ? "Obtendo Localização..." : "Pronto para correr?"}
             </h2>
             
             <p className={cn(
@@ -471,7 +479,7 @@ export default function App() {
               accuracyLevel === 'weak' ? "text-orange-400 bg-orange-500/10" :
               "text-slate-400"
             )}>
-              {gpsError ? gpsError : precisionMessage}
+              {gpsError ? gpsError : (currentPosition ? precisionMessage : (lastKnownPosition ? "Usando última localização conhecida. Aguardando GPS..." : precisionMessage))}
             </p>
             
             {gpsError ? (
@@ -484,15 +492,15 @@ export default function App() {
             ) : (
               <button 
                 onClick={() => handleStartRun()}
-                disabled={!currentPosition}
+                disabled={!currentPosition && !lastKnownPosition}
                 className={cn(
                   "w-full py-5 rounded-full font-black text-xl shadow-xl active:scale-95 transition-transform",
-                  (!currentPosition) 
+                  (!currentPosition && !lastKnownPosition) 
                     ? "bg-slate-800 text-slate-500 cursor-not-allowed" 
                     : "bg-blue-600 text-white shadow-blue-500/20"
                 )}
               >
-                {isWaitingForGPS && !currentPosition ? "AGUARDANDO GPS..." : "COMEÇAR AGORA"}
+                {isWaitingForGPS && !currentPosition && !lastKnownPosition ? "AGUARDANDO GPS..." : "COMEÇAR AGORA"}
               </button>
             )}
             

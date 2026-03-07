@@ -69,26 +69,34 @@ export const Map: React.FC<MapProps> = ({ positions, currentPosition, speedSegme
         }
       });
 
-      // Carto Light tiles
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      // Use OSM or CartoDB tiles
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
+        attribution: '© OpenStreetMap contributors'
       }).addTo(map);
 
       // Custom circle marker for current position
       const icon = L.divIcon({
         className: 'current-pos-marker',
         html: `<div class="relative">
-          <div class="absolute -inset-2 bg-blue-500/20 rounded-full animate-ping"></div>
-          <div style="background-color: #3b82f6; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.3); position: relative; z-index: 10;"></div>
+          <div class="absolute -inset-3 bg-blue-500/30 rounded-full animate-ping"></div>
+          <div style="background-color: #3b82f6; width: 18px; height: 18px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(59, 130, 246, 0.5); position: relative; z-index: 10;"></div>
         </div>`,
-        iconSize: [16, 16],
-        iconAnchor: [8, 8]
+        iconSize: [18, 18],
+        iconAnchor: [9, 9]
       });
 
-      markerRef.current = L.marker(initialPos, { icon }).addTo(map);
+      markerRef.current = L.marker(initialPos, { icon, zIndexOffset: 1000 }).addTo(map);
 
       mapRef.current = map;
-      setIsMapReady(true);
+      
+      // Force a resize after a short delay to fix gray map issue
+      setTimeout(() => {
+        if (mapRef.current) {
+          mapRef.current.invalidateSize();
+          setIsMapReady(true);
+        }
+      }, 100);
     } catch (err) {
       console.error("Map initialization error:", err);
       setMapError(true);
@@ -100,6 +108,17 @@ export const Map: React.FC<MapProps> = ({ positions, currentPosition, speedSegme
       initMap();
     }
   }, [positions, currentPosition, isMapReady]);
+
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (mapRef.current) {
+        mapRef.current.invalidateSize();
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -122,9 +141,10 @@ export const Map: React.FC<MapProps> = ({ positions, currentPosition, speedSegme
       speedSegments.forEach(seg => {
         const poly = L.polyline(seg.path as L.LatLngExpression[], {
           color: seg.color,
-          weight: 6,
+          weight: 8,
           opacity: 0.9,
-          lineJoin: 'round'
+          lineJoin: 'round',
+          lineCap: 'round'
         }).addTo(mapRef.current!);
         polylinesRef.current.push(poly);
       });
@@ -132,9 +152,10 @@ export const Map: React.FC<MapProps> = ({ positions, currentPosition, speedSegme
       const path = positions.map(p => getCoords(p));
       const poly = L.polyline(path, {
         color: '#3b82f6',
-        weight: 6,
+        weight: 8,
         opacity: 0.8,
-        lineJoin: 'round'
+        lineJoin: 'round',
+        lineCap: 'round'
       }).addTo(mapRef.current);
       polylinesRef.current.push(poly);
     }
@@ -149,7 +170,8 @@ export const Map: React.FC<MapProps> = ({ positions, currentPosition, speedSegme
       }
 
       if (isTracking && autoFollow) {
-        mapRef.current.setView(latestPos, mapRef.current.getZoom(), { animate: true });
+        // Smoothly pan to the new position
+        mapRef.current.panTo(latestPos, { animate: true, duration: 1 });
       }
     }
 
