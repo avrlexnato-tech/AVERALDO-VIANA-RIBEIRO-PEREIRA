@@ -6,7 +6,10 @@ interface Position {
   longitude: number;
   timestamp: number;
   speed: number;
+  accuracy: number;
 }
+
+export type AccuracyLevel = 'good' | 'acceptable' | 'weak';
 
 const getSpeedColor = (speedKmh: number) => {
   if (speedKmh < 8) return '#ef4444'; // Red
@@ -25,6 +28,8 @@ export function useGPS(userWeight: number = 71) {
   const [segments, setSegments] = useState<Segment[]>([]);
   const [speedSegments, setSpeedSegments] = useState<SpeedSegment[]>([]);
   const [calories, setCalories] = useState(0);
+  const [accuracyLevel, setAccuracyLevel] = useState<AccuracyLevel | null>(null);
+  const [accuracyValue, setAccuracyValue] = useState<number | null>(null);
   
   const watchId = useRef<number | null>(null);
   const lastSegmentTime = useRef(0);
@@ -51,8 +56,21 @@ export function useGPS(userWeight: number = 71) {
 
   const gpsOptions = {
     enableHighAccuracy: true,
-    timeout: 15000,
-    maximumAge: 0,
+    timeout: 10000,
+    maximumAge: 5000,
+  };
+
+  const getAccuracyLevel = (accuracy: number): AccuracyLevel => {
+    if (accuracy <= 20) return 'good';
+    if (accuracy <= 50) return 'acceptable';
+    return 'weak';
+  };
+
+  const getPrecisionMessage = (level: AccuracyLevel | null) => {
+    if (!level) return "Obtendo sua localização...";
+    if (level === 'good') return "GPS com boa precisão.";
+    if (level === 'acceptable') return "Localização encontrada. A precisão vai melhorar durante a corrida.";
+    return "Sinal de GPS ainda está ajustando. Você já pode começar.";
   };
 
   const requestInitialPosition = useCallback(() => {
@@ -64,29 +82,52 @@ export function useGPS(userWeight: number = 71) {
     setIsWaitingForGPS(true);
     setError(null);
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const pos: Position = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          timestamp: position.timestamp,
-          speed: position.coords.speed || 0,
-        };
-        setCurrentPosition(pos);
+    const handleSuccess = (position: GeolocationPosition) => {
+      const pos: Position = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        timestamp: position.timestamp,
+        speed: position.coords.speed || 0,
+        accuracy: position.coords.accuracy,
+      };
+      setCurrentPosition(pos);
+      setAccuracyValue(position.coords.accuracy);
+      setAccuracyLevel(getAccuracyLevel(position.coords.accuracy));
+      setIsWaitingForGPS(false);
+    };
+
+    const handleError = (err: GeolocationPositionError) => {
+      console.warn("GPS Attempt Error:", err.message);
+      
+      // If we already have a position, don't show error, just keep waiting or use what we have
+      if (currentPosition) {
         setIsWaitingForGPS(false);
-      },
-      (err) => {
-        console.error("Initial GPS Error:", err);
+        return;
+      }
+
+      if (err.code === 3) { // Timeout
+        // Try one more time with lower accuracy if we have nothing
+        navigator.geolocation.getCurrentPosition(
+          handleSuccess,
+          (secondErr) => {
+            console.error("Second GPS Attempt Error:", secondErr);
+            setIsWaitingForGPS(false);
+            setError("Não foi possível obter sua localização. Verifique se o GPS está ativo.");
+          },
+          { ...gpsOptions, enableHighAccuracy: false }
+        );
+      } else {
         setIsWaitingForGPS(false);
         if (err.code === 1) {
           setError("Permissão de localização negada. Ative a localização nas configurações do seu celular.");
         } else {
           setError("Não foi possível obter sua localização atual. Verifique seu GPS.");
         }
-      },
-      gpsOptions
-    );
-  }, []);
+      }
+    };
+
+    navigator.geolocation.getCurrentPosition(handleSuccess, handleError, gpsOptions);
+  }, [currentPosition, gpsOptions]);
 
   const startTracking = useCallback(() => {
     if (!navigator.geolocation) {
@@ -110,9 +151,12 @@ export function useGPS(userWeight: number = 71) {
           longitude: position.coords.longitude,
           timestamp: position.timestamp,
           speed: position.coords.speed || 0,
+          accuracy: position.coords.accuracy,
         };
 
         setCurrentPosition(newPos);
+        setAccuracyValue(position.coords.accuracy);
+        setAccuracyLevel(getAccuracyLevel(position.coords.accuracy));
 
         setPositions((prev) => {
           if (prev.length > 0) {
@@ -124,8 +168,8 @@ export function useGPS(userWeight: number = 71) {
               newPos.longitude
             );
             
-            // Filter out small jumps/noise
-            if (d > 0.001) { // 1 meter
+            // Filter out small jumps/noise and very poor accuracy
+            if (d > 0.001 && newPos.accuracy < 100) { // 1 meter and accuracy < 100m
               const newTotalDistance = distance + d;
               setDistance(newTotalDistance);
 
@@ -228,6 +272,9 @@ export function useGPS(userWeight: number = 71) {
     distance,
     isActive,
     isWaitingForGPS,
+    accuracyLevel,
+    accuracyValue,
+    precisionMessage: getPrecisionMessage(accuracyLevel),
     error,
     segments,
     speedSegments,

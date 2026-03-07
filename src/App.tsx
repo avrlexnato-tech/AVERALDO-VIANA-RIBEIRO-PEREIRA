@@ -85,6 +85,8 @@ export default function App() {
     distance, 
     isActive, 
     isWaitingForGPS,
+    accuracyLevel,
+    precisionMessage,
     error: gpsError,
     segments, 
     speedSegments,
@@ -459,15 +461,17 @@ export default function App() {
             </div>
             
             <h2 className="text-3xl font-black mb-4 tracking-tight">
-              {isWaitingForGPS ? "Obtendo Localização..." : "Pronto para correr?"}
+              {isWaitingForGPS && !currentPosition ? "Obtendo Localização..." : "Pronto para correr?"}
             </h2>
             
-            <p className="text-slate-400 mb-12">
-              {isWaitingForGPS 
-                ? "Aguardando sinal de GPS de alta precisão..." 
-                : gpsError 
-                  ? gpsError 
-                  : "Certifique-se de estar em um local aberto para melhor sinal de GPS."}
+            <p className={cn(
+              "text-sm mb-12 px-4 py-2 rounded-xl font-bold",
+              accuracyLevel === 'good' ? "text-emerald-400 bg-emerald-500/10" :
+              accuracyLevel === 'acceptable' ? "text-amber-400 bg-amber-500/10" :
+              accuracyLevel === 'weak' ? "text-orange-400 bg-orange-500/10" :
+              "text-slate-400"
+            )}>
+              {gpsError ? gpsError : precisionMessage}
             </p>
             
             {gpsError ? (
@@ -480,15 +484,15 @@ export default function App() {
             ) : (
               <button 
                 onClick={() => handleStartRun()}
-                disabled={isWaitingForGPS || !currentPosition}
+                disabled={!currentPosition}
                 className={cn(
                   "w-full py-5 rounded-full font-black text-xl shadow-xl active:scale-95 transition-transform",
-                  (isWaitingForGPS || !currentPosition) 
+                  (!currentPosition) 
                     ? "bg-slate-800 text-slate-500 cursor-not-allowed" 
                     : "bg-blue-600 text-white shadow-blue-500/20"
                 )}
               >
-                COMEÇAR AGORA
+                {isWaitingForGPS && !currentPosition ? "AGUARDANDO GPS..." : "COMEÇAR AGORA"}
               </button>
             )}
             

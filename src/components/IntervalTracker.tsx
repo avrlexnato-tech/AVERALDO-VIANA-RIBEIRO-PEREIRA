@@ -18,6 +18,7 @@ import { IntervalStage } from '../types';
 import { AudioService } from '../services/audioService';
 import { useGPS } from '../hooks/useGPS';
 import { Map } from './Map';
+import { cn } from './UI';
 
 interface IntervalTrackerProps {
   stages: IntervalStage[];
@@ -48,6 +49,8 @@ export const IntervalTracker: React.FC<IntervalTrackerProps> = ({
     isActive, 
     speedSegments,
     calories,
+    accuracyLevel,
+    precisionMessage,
     startTracking, 
     stopTracking,
     error
@@ -181,6 +184,14 @@ export const IntervalTracker: React.FC<IntervalTrackerProps> = ({
         {error && (
           <div className="absolute top-20 left-6 right-6 bg-red-500/90 backdrop-blur-md p-3 rounded-xl text-xs font-bold text-center z-20">
             {error}
+          </div>
+        )}
+        {!error && accuracyLevel && accuracyLevel !== 'good' && (
+          <div className={cn(
+            "absolute top-20 left-6 right-6 backdrop-blur-md p-2 rounded-xl text-[10px] font-bold text-center z-20",
+            accuracyLevel === 'acceptable' ? "bg-amber-500/80 text-white" : "bg-orange-500/80 text-white"
+          )}>
+            {precisionMessage}
           </div>
         )}
       </div>
